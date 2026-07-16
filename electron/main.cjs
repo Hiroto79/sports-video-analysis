@@ -1,10 +1,85 @@
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 
 // Determine if we are in development mode
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow;
+
+// ---- Auto Updater (only active in packaged/distributed builds) ----
+let autoUpdater = null;
+if (!isDev) {
+  try {
+    const { autoUpdater: au } = require('electron-updater');
+    autoUpdater = au;
+    autoUpdater.autoDownload = false;       // Don't download automatically — user must click "Update"
+    autoUpdater.autoInstallOnAppQuit = true; // Install when user quits after download
+
+    autoUpdater.on('update-available', (info) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('update-available', info);
+      }
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('update-not-available');
+      }
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('update-download-progress', progress);
+      }
+    });
+
+    autoUpdater.on('update-downloaded', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('update-downloaded');
+      }
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.error('Auto updater error:', err);
+    });
+  } catch (e) {
+    console.log('electron-updater not available:', e.message);
+  }
+}
+
+// IPC: Renderer requests update check
+ipcMain.handle('check-for-updates', async () => {
+  if (autoUpdater) {
+    try {
+      await autoUpdater.checkForUpdates();
+      return { checking: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  }
+  return { isDev: true };
+});
+
+// IPC: Renderer requests to start downloading the update
+ipcMain.handle('download-update', async () => {
+  if (autoUpdater) {
+    autoUpdater.downloadUpdate();
+    return { downloading: true };
+  }
+  return { isDev: true };
+});
+
+// IPC: Renderer requests to quit and install
+ipcMain.handle('quit-and-install', () => {
+  if (autoUpdater) {
+    autoUpdater.quitAndInstall();
+  }
+});
+
+// IPC: Get app version
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
 
 function createWindows() {
   // Get screen width and height to position windows nicely
@@ -27,8 +102,9 @@ function createWindows() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false,             // Needed for preload/IPC
       backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -49,8 +125,9 @@ function createWindows() {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
-          sandbox: true,
+          sandbox: false,
           backgroundThrottling: false,
+          preload: path.join(__dirname, 'preload.cjs'),
         }
       }
     };
@@ -60,6 +137,13 @@ function createWindows() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Check for updates 5 seconds after app is ready (only packaged builds)
+  if (!isDev && autoUpdater) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(console.error);
+    }, 5000);
+  }
 }
 
 // App Ready Lifecycle

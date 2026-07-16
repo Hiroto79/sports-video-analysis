@@ -111,6 +111,58 @@ function App() {
   const [newTeamName, setNewTeamName] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // ---- Update system states ----
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'>('idle');
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [updateProgress, setUpdateProgress] = useState<number>(0);
+
+  // Register electron IPC update listeners
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI) return; // Web / mobile fallback
+
+    electronAPI.onUpdateAvailable((info: any) => {
+      setUpdateInfo(info);
+      setUpdateStatus('available');
+    });
+    electronAPI.onUpdateNotAvailable(() => {
+      setUpdateStatus('not-available');
+      setTimeout(() => setUpdateStatus('idle'), 4000);
+    });
+    electronAPI.onUpdateDownloadProgress((progress: any) => {
+      setUpdateProgress(Math.round(progress.percent || 0));
+      setUpdateStatus('downloading');
+    });
+    electronAPI.onUpdateDownloaded(() => {
+      setUpdateStatus('ready');
+    });
+
+    return () => electronAPI.removeAllUpdateListeners?.();
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (updateStatus === 'ready') {
+      electronAPI?.quitAndInstall();
+      return;
+    }
+    if (updateStatus === 'available') {
+      setUpdateStatus('downloading');
+      electronAPI?.downloadUpdate();
+      return;
+    }
+    setUpdateStatus('checking');
+    if (electronAPI) {
+      await electronAPI.checkForUpdates();
+    } else {
+      // Web fallback: show no-update after 2s
+      setTimeout(() => {
+        setUpdateStatus('not-available');
+        setTimeout(() => setUpdateStatus('idle'), 3000);
+      }, 2000);
+    }
+  };
+
   const fetchAdminAccounts = async () => {
     if (!supabase) {
       // Offline fallback: Use usersDb
@@ -525,10 +577,7 @@ function App() {
   const [timeShiftOffset, setTimeShiftOffset] = useState('');
   const [timeShiftTarget, setTimeShiftTarget] = useState<'all' | 'selected'>('all');
 
-  // In-app Update Simulation States
-  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-  const [updateStep, setUpdateStep] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'completed' | 'uptodate'>('idle');
-  const [updateDownloadProgress, setUpdateDownloadProgress] = useState(0);
+
 
   // Timeline multi-selection state
   const [timelineSelectedIds, setTimelineSelectedIds] = useState<Set<string>>(new Set());
@@ -1393,40 +1442,6 @@ function App() {
     setIsMatrixPlayerOpen(true);
   };
 
-  // In-app Update Simulation Handlers
-  const handleCheckForUpdates = () => {
-    setIsUpdateModalOpen(true);
-    setUpdateStep('checking');
-    
-    // Simulate network checking
-    setTimeout(() => {
-      setUpdateStep('available');
-    }, 1500);
-  };
-
-  const handleStartUpdateDownload = () => {
-    setUpdateStep('downloading');
-    setUpdateDownloadProgress(0);
-
-    const interval = setInterval(() => {
-      setUpdateDownloadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setUpdateStep('completed');
-          }, 600);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 150);
-  };
-
-  const handleApplyUpdateReload = () => {
-    setIsUpdateModalOpen(false);
-    setUpdateStep('idle');
-    window.location.reload();
-  };
 
   const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix') => {
     try {
@@ -3354,14 +3369,33 @@ function App() {
             コードウィンドウをポップアウト
           </button>
 
-          {/* Simulate Update button */}
+          {/* Update button */}
           <button
             onClick={handleCheckForUpdates}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/40 border border-rose-800/80 hover:bg-rose-900/60 text-[10px] font-bold text-rose-400 hover:text-white rounded-lg cursor-pointer transition-colors shadow"
-            title="アプリの更新（Live Updates）を確認します"
+            className={`flex items-center gap-1.5 px-3 py-1.5 border text-[10px] font-bold rounded-lg cursor-pointer transition-colors shadow ${
+              updateStatus === 'ready'
+                ? 'bg-emerald-700 border-emerald-500 text-white hover:bg-emerald-600 animate-pulse'
+                : updateStatus === 'available'
+                ? 'bg-amber-700/80 border-amber-500 text-white hover:bg-amber-600'
+                : updateStatus === 'downloading'
+                ? 'bg-sky-900/60 border-sky-700 text-sky-300 cursor-not-allowed'
+                : 'bg-rose-950/40 border-rose-800/80 hover:bg-rose-900/60 text-rose-400 hover:text-white'
+            }`}
+            title="アプリの更新を確認します"
+            disabled={updateStatus === 'downloading' || updateStatus === 'checking'}
           >
-            <RefreshCw className="w-3 h-3 text-rose-500 animate-spin-slow" />
-            アップデートを確認
+            <RefreshCw className={`w-3 h-3 ${
+              updateStatus === 'checking' || updateStatus === 'downloading'
+                ? 'animate-spin text-sky-400'
+                : updateStatus === 'ready' ? 'text-emerald-300'
+                : 'text-rose-500'
+            }`} />
+            {updateStatus === 'idle' && 'アップデートを確認'}
+            {updateStatus === 'checking' && '確認中...'}
+            {updateStatus === 'not-available' && '最新版です'}
+            {updateStatus === 'available' && `v${updateInfo?.version}に更新する`}
+            {updateStatus === 'downloading' && `ダウンロード中 ${updateProgress}%`}
+            {updateStatus === 'ready' && '再起動して適用'}
           </button>
 
           {/* User profile dropdown / logout */}
@@ -4274,94 +4308,6 @@ function App() {
         </div>
       )}
 
-      {/* 🔄 アプリケーション・アップデート（Live Updates）シミュレーション */}
-      {isUpdateModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-5 text-center">
-            
-            {updateStep === 'checking' && (
-              <div className="py-6 flex flex-col items-center gap-4">
-                <RefreshCw className="w-10 h-10 text-rose-500 animate-spin" />
-                <div>
-                  <h4 className="text-sm font-extrabold text-white">アップデートを確認中...</h4>
-                  <p className="text-[10px] text-zinc-400 mt-1">最新のパッケージ情報を取得しています</p>
-                </div>
-              </div>
-            )}
-
-            {updateStep === 'available' && (
-              <div className="flex flex-col gap-4">
-                <div className="mx-auto w-12 h-12 bg-rose-950/60 text-rose-400 rounded-full flex items-center justify-center text-xl">
-                  🚀
-                </div>
-                <div>
-                  <h4 className="text-sm font-extrabold text-white">新しいアップデートが見つかりました！</h4>
-                  <div className="flex items-center justify-center gap-2 mt-1.5 font-mono text-[10px]">
-                    <span className="text-zinc-500">現在: v1.0.0</span>
-                    <span className="text-zinc-400">→</span>
-                    <span className="text-rose-400 font-bold bg-rose-950 px-2 py-0.5 rounded">最新: v1.1.0</span>
-                  </div>
-                  <p className="text-[10px] text-zinc-400 mt-3 text-left bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 leading-relaxed font-mono">
-                    【更新内容】<br />
-                    ・ダッシュボードでの複数CSV一括読込に対応<br />
-                    ・Savantチーム総合分析のフィルタ切り替えを追加<br />
-                    ・その他UIレスポンシブ表示の最適化
-                  </p>
-                </div>
-                <div className="flex gap-2 justify-end mt-2">
-                  <button
-                    onClick={() => setIsUpdateModalOpen(false)}
-                    className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
-                  >
-                    後で
-                  </button>
-                  <button
-                    onClick={handleStartUpdateDownload}
-                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold shadow cursor-pointer transition-all"
-                  >
-                    今すぐ更新 (Live Update)
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {updateStep === 'downloading' && (
-              <div className="py-4 flex flex-col gap-4">
-                <div className="flex justify-between items-center text-xs font-bold text-zinc-300">
-                  <span>パッケージをダウンロード中...</span>
-                  <span className="font-mono text-rose-400">{updateDownloadProgress}%</span>
-                </div>
-                <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-800">
-                  <div 
-                    className="bg-rose-500 h-full transition-all duration-150 rounded-full"
-                    style={{ width: `${updateDownloadProgress}%` }}
-                  />
-                </div>
-                <p className="text-[9px] text-zinc-500">ダウンロード完了後、アプリが自動的に再読み込みされます。</p>
-              </div>
-            )}
-
-            {updateStep === 'completed' && (
-              <div className="flex flex-col gap-4">
-                <div className="mx-auto w-12 h-12 bg-emerald-950/60 text-emerald-400 rounded-full flex items-center justify-center text-xl">
-                  ✓
-                </div>
-                <div>
-                  <h4 className="text-sm font-extrabold text-white">アップデートの準備が完了しました！</h4>
-                  <p className="text-[10px] text-zinc-400 mt-1">「再起動」を押すと最新版がすぐに反映されます。</p>
-                </div>
-                <button
-                  onClick={handleApplyUpdateReload}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow cursor-pointer transition-all"
-                >
-                  アプリを再起動して適用する
-                </button>
-              </div>
-            )}
-
-          </div>
-        </div>
-      )}
       {/* 5. ADMINISTRATOR PANEL MODAL */}
       {showAdminPanel && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">

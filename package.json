@@ -1,17 +1,58 @@
 {
   "name": "sports-video-analysis",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
+  "description": "Pro Sports Video Tagging & Analytics",
+  "author": "Sports Video Analysis",
   "scripts": {
     "dev:web": "vite",
     "electron": "electron .",
     "dev": "concurrently -k \"npm run dev:web\" \"wait-on http://localhost:5173 && npm run electron\"",
     "build": "tsc -b && vite build",
     "package": "npm run build && npx electron-packager . SportsVideoAnalysis --platform=darwin --arch=arm64 --icon=assets/icon.icns --out=build_output --overwrite && rm -rf /Applications/SportsVideoAnalysis.app && mv build_output/SportsVideoAnalysis-darwin-arm64/SportsVideoAnalysis.app /Applications/SportsVideoAnalysis.app && rm -rf build_output/SportsVideoAnalysis-darwin-arm64",
+    "release:mac": "npm run build && npx electron-builder --mac --publish always",
+    "release:win": "npm run build && npx electron-builder --win --publish always",
+    "release:all": "npm run build && npx electron-builder --mac --win --publish always",
     "lint": "oxlint",
     "preview": "vite preview"
+  },
+  "build": {
+    "appId": "com.sportsvideo.analysis",
+    "productName": "SportsVideoAnalysis",
+    "directories": {
+      "output": "release_output"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "index.html"
+    ],
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.sports"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Hiroto79",
+      "repo": "sports-video-analysis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
@@ -19,6 +60,7 @@
     "@capacitor/core": "^8.4.2",
     "@capacitor/ios": "^8.4.2",
     "@supabase/supabase-js": "^2.110.1",
+    "electron-updater": "^6.3.9",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
@@ -31,6 +73,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
     "electron": "^43.0.0",
+    "electron-builder": "^25.1.8",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",
