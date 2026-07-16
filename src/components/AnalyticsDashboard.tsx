@@ -24,6 +24,7 @@ interface AnalyticsDashboardProps {
   players?: Player[];
   teamAName?: string;
   teamBName?: string;
+  currentUser?: string;
 }
 
 interface SavantAggregatedStats {
@@ -800,8 +801,27 @@ const AdvancedPitchingMetricsGrid: React.FC<{ stats: SavantAggregatedStats; titl
 // -------------------------------------------------------------
 export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   currentEvents,
-  players = []
+  players = [],
+  currentUser = ''
 }) => {
+  // Scoped localStorage wrapper using lexical scoping
+  const localStorage = {
+    getItem: (key: string): string | null => {
+      if (!currentUser) return window.localStorage.getItem(key);
+      const userKey = `user_${currentUser}_${key}`;
+      const userVal = window.localStorage.getItem(userKey);
+      if (userVal !== null) return userVal;
+      return window.localStorage.getItem(key);
+    },
+    setItem: (key: string, value: string) => {
+      if (!currentUser) {
+        window.localStorage.setItem(key, value);
+        return;
+      }
+      const userKey = `user_${currentUser}_${key}`;
+      window.localStorage.setItem(userKey, value);
+    }
+  };
   const [dataMode, setDataMode] = useState<'current' | 'csv'>('current');
   const [csvEvents, setCsvEvents] = useState<TaggedEvent[]>([]);
   const [selectedTab, setSelectedTab] = useState<'savant' | 'batter' | 'pitcher'>('savant');
