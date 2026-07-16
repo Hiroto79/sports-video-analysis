@@ -821,68 +821,93 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     return {} as { [key: string]: { name: string; group: string; color?: string; linkTrigger?: string } };
   }, []);
 
-  // Handle CSV File Upload & Parsing (Matches exact column mapping)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Handle CSV File Upload & Parsing (Matches exact column mapping, supports multiple files)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (!text) return;
-
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) return;
-
-      const parsed: TaggedEvent[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
-        if (cols.length < 3) continue;
-
-        const batter = cols[0] || '';
-        const count = cols[1] || '';
-        const course = cols[2] || '';
-        const team = cols[3] || '';
-        const runners = cols[4] || '';
-        const runs = cols[5] || '';
-        const battedResult = cols[7] || '';
-        const hitDirection = cols[8] || '';
-        const pitcher = cols[15] || cols[10] || ''; // Read pitcherName from 16th column (index 15) with fallback to index 10
-        const pitchResult = cols[11] || '';
-        const pickoff = cols[12] || '';
-        const pitchType = cols[13] || '';
-        const steal = cols[14] || '';
-
-        parsed.push({
-          id: `csv_${i}`,
-          timestamp: i,
-          startTime: i,
-          endTime: i + 5,
-          actionId: 'btn_pitch',
-          actionName: 'Pitch',
-          color: 'bg-emerald-900',
-          createdAt: Date.now(),
-          labels: {
-            Batter: batter,
-            Pitcher: pitcher,
-            Count: count,
-            Team: team,
-            Course: course,
-            Result: battedResult || pitchResult,
-            'Pitch Type': pitchType,
-            Hit_Direction: hitDirection,
-            Runners: runners,
-            RBI: runs,
-            Pickoff: pickoff,
-            Steal: steal
+    const fileList = Array.from(files);
+    const readAndParseFile = (file: File): Promise<TaggedEvent[]> => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const text = event.target?.result as string;
+          if (!text) {
+            resolve([]);
+            return;
           }
-        });
-      }
 
-      setCsvEvents(parsed);
-      setDataMode('csv');
+          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+          if (lines.length < 2) {
+            resolve([]);
+            return;
+          }
+
+          const parsed: TaggedEvent[] = [];
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+            if (cols.length < 3) continue;
+
+            const batter = cols[0] || '';
+            const count = cols[1] || '';
+            const course = cols[2] || '';
+            const team = cols[3] || '';
+            const runners = cols[4] || '';
+            const runs = cols[5] || '';
+            const battedResult = cols[7] || '';
+            const hitDirection = cols[8] || '';
+            const pitcher = cols[15] || cols[10] || ''; // Read pitcherName from 16th column (index 15) with fallback to index 10
+            const pitchResult = cols[11] || '';
+            const pickoff = cols[12] || '';
+            const pitchType = cols[13] || '';
+            const steal = cols[14] || '';
+
+            parsed.push({
+              id: `csv_${file.name}_${i}`,
+              timestamp: i,
+              startTime: i,
+              endTime: i + 5,
+              actionId: 'btn_pitch',
+              actionName: 'Pitch',
+              color: 'bg-emerald-900',
+              createdAt: Date.now(),
+              labels: {
+                Batter: batter,
+                Pitcher: pitcher,
+                Count: count,
+                Team: team,
+                Course: course,
+                Result: battedResult || pitchResult,
+                'Pitch Type': pitchType,
+                Hit_Direction: hitDirection,
+                Runners: runners,
+                RBI: runs,
+                Pickoff: pickoff,
+                Steal: steal
+              }
+            });
+          }
+          resolve(parsed);
+        };
+        reader.onerror = () => resolve([]);
+        reader.readAsText(file);
+      });
     };
-    reader.readAsText(file);
+
+    const results = await Promise.all(fileList.map(readAndParseFile));
+    const allParsedEvents = results.flat();
+
+    // Re-index event timestamps/ids to be continuous and prevent duplication
+    const reindexedEvents = allParsedEvents.map((ev, idx) => ({
+      ...ev,
+      id: `csv_merged_${idx + 1}`,
+      timestamp: idx + 1,
+      startTime: idx + 1,
+      endTime: idx + 6
+    }));
+
+    setCsvEvents(reindexedEvents);
+    setDataMode('csv');
   };
 
   const activeEvents = dataMode === 'current' ? currentEvents : csvEvents;
@@ -1019,7 +1044,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           }`}>
             <Upload className="w-3.5 h-3.5" />
             {dataMode === 'csv' && csvEvents.length > 0 ? `CSV分析中 (${csvEvents.length}件)` : '📁 CSVファイル読込'}
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+            <input type="file" accept=".csv" multiple onChange={handleFileUpload} className="hidden" />
           </label>
         </div>
       </div>
