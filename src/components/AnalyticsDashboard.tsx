@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { TaggedEvent, Player } from '../types';
-import { BarChart3, Upload, Target, Activity, Flame, TrendingUp, Award, Shield } from 'lucide-react';
+import { BarChart3, Upload, Target, Activity, Flame, TrendingUp, Award, Shield, Calendar, Users } from 'lucide-react';
 
 export const getLabelValueByKeywords = (labels: Record<string, any> | undefined, keywords: string[], defaultVal = ''): string => {
   if (!labels) return defaultVal;
@@ -824,7 +824,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   };
   const [dataMode, setDataMode] = useState<'current' | 'csv'>('current');
   const [csvEvents, setCsvEvents] = useState<TaggedEvent[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'savant' | 'batter' | 'pitcher'>('savant');
+  const [selectedTab, setSelectedTab] = useState<'savant' | 'batter' | 'pitcher' | 'gameday'>('savant');
   
   const [selectedBatterName, setSelectedBatterName] = useState<string>('all');
   const [selectedPitcherName, setSelectedPitcherName] = useState<string>('all');
@@ -1022,6 +1022,94 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     return calculateSavantStats(pitcherEvents, quickCustomMap);
   }, [pitcherEvents, quickCustomMap]);
 
+  // ============================================================
+  // GAME DAY ANALYSIS LOGIC
+  // ============================================================
+  const gameDays = useMemo(() => {
+    const dayMap = new Map<string, TaggedEvent[]>();
+    activeEvents.forEach(ev => {
+      const dateStr = new Date(ev.createdAt).toLocaleDateString('ja-JP', {
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      });
+      if (!dayMap.has(dateStr)) dayMap.set(dateStr, []);
+      dayMap.get(dateStr)!.push(ev);
+    });
+    // Sort descending
+    return Array.from(dayMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [activeEvents]);
+
+  const [selectedGameDay, setSelectedGameDay] = useState<string>('');
+
+  const selectedDayEvents = useMemo(() => {
+    const dayKey = selectedGameDay || (gameDays[0]?.[0] ?? '');
+    return gameDays.find(([d]) => d === dayKey)?.[1] ?? [];
+  }, [selectedGameDay, gameDays]);
+
+  const gameDayLineup = useMemo(() => {
+    // Group players by team, collect their appearance and stats from that day's events
+    const teamMap = new Map<string, Map<string, {
+      name: string; number?: string; pa: number; hits: number; hr: number; rbi: number;
+      bb: number; k: number; ab: number; b1: number; b2: number; b3: number;
+      order?: number; positionType?: string;
+    }>>();
+
+    selectedDayEvents.forEach(ev => {
+      const batter = ev.labels?.Batter || ev.labels?.打者 || ev.playerName || '';
+      const team = (ev.labels as any)?.Team || (ev.labels as any)?.チーム || '';
+      const result = Object.values(ev.labels || {}).join(' ');
+      const lRes = result.toLowerCase();
+
+      if (!batter || batter === '-') return;
+
+      const teamKey = team || 'チーム不明';
+      if (!teamMap.has(teamKey)) teamMap.set(teamKey, new Map());
+      const teamPlayers = teamMap.get(teamKey)!;
+
+      if (!teamPlayers.has(batter)) {
+        // Try to find player data from roster
+        const rosterPlayer = players.find(p => p.name === batter);
+        teamPlayers.set(batter, {
+          name: batter,
+          number: rosterPlayer?.number,
+          pa: 0, hits: 0, hr: 0, rbi: 0, bb: 0, k: 0, ab: 0, b1: 0, b2: 0, b3: 0,
+          order: rosterPlayer?.battingOrder,
+          positionType: rosterPlayer?.positionType
+        });
+      }
+
+      const ps = teamPlayers.get(batter)!;
+      ps.pa++;
+
+      const isHR = lRes.includes('本塁打') || lRes.includes('hr') || lRes.includes('ホームラン');
+      const is3B = lRes.includes('三塁打') || lRes.includes('3b');
+      const is2B = lRes.includes('二塁打') || lRes.includes('2b') || lRes.includes('ツーベース');
+      const is1B = lRes.includes('単打') || lRes.includes('1b') || lRes.includes('ヒット') || lRes.includes('安打');
+      const isBB = lRes.includes('四球') || lRes.includes('bb') || lRes.includes('walk');
+      const isHBP = lRes.includes('死球') || lRes.includes('hbp');
+      const isK = lRes.includes('三振') || lRes.includes('k ') || lRes.includes(' k') || lRes === 'k';
+      const isSF = lRes.includes('犠飛') || lRes.includes('sf');
+      const isSH = lRes.includes('犠打') || lRes.includes('sh') || lRes.includes('bunt');
+
+      if (isBB || isHBP) { ps.bb++; }
+      else if (isSF || isSH) { /* plate appearance but no AB */ }
+      else {
+        ps.ab++;
+        if (isHR) { ps.hits++; ps.hr++; ps.b3++; /* reuse b3 for HR total */ }
+        else if (is3B) { ps.hits++; ps.b3++; }
+        else if (is2B) { ps.hits++; ps.b2++; }
+        else if (is1B) { ps.hits++; ps.b1++; }
+      }
+      if (isK) ps.k++;
+
+      // RBI
+      const rbiLabel = (ev.labels as any)?.RBI || (ev.labels as any)?.打点 || '';
+      const rbiNum = parseInt(rbiLabel);
+      if (!isNaN(rbiNum)) ps.rbi += rbiNum;
+    });
+
+    return teamMap;
+  }, [selectedDayEvents, players]);
+
   return (
     <div className="flex-1 bg-[#0b0f19] p-6 flex flex-col gap-6 text-zinc-100 overflow-y-auto max-w-7xl mx-auto w-full font-sans">
       {/* Baseball Savant Inspired Header Banner */}
@@ -1100,6 +1188,16 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           }`}
         >
           <Activity className="w-4 h-4 text-sky-500" /> 投手別 Pitch Tracking & FIP
+        </button>
+        <button
+          onClick={() => setSelectedTab('gameday')}
+          className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+            selectedTab === 'gameday'
+              ? 'bg-emerald-955/80 text-emerald-400 border border-emerald-600/50 shadow-lg shadow-emerald-950/40'
+              : 'text-zinc-400 hover:bg-zinc-900'
+          }`}
+        >
+          <Calendar className="w-4 h-4 text-emerald-500" /> 試合別 スタメン & スタッツ
         </button>
       </div>
 
@@ -1474,6 +1572,147 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB 4: GAME DAY ANALYSIS */}
+      {selectedTab === 'gameday' && (
+        <div className="space-y-6">
+          {/* Game day selector */}
+          <div className="bg-[#111827] border border-emerald-900/40 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-emerald-500" />
+              <span className="text-sm font-black text-white">試合日を選択</span>
+            </div>
+            {gameDays.length === 0 ? (
+              <p className="text-xs text-zinc-500">タグデータがありません。試合のタグ打ちを行ってください。</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {gameDays.map(([day, evs]) => (
+                  <button
+                    key={day}
+                    onClick={() => setSelectedGameDay(day)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                      (selectedGameDay || gameDays[0]?.[0]) === day
+                        ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-950/40'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
+                    }`}
+                  >
+                    {day}
+                    <span className="ml-1.5 opacity-70">{evs.length}件</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Per-team Lineup & Stats */}
+          {gameDays.length > 0 && Array.from(gameDayLineup.entries()).map(([teamName, playerMap]) => {
+            const lineup = Array.from(playerMap.values()).sort((a, b) => {
+              if (a.order && b.order) return a.order - b.order;
+              if (a.order) return -1;
+              if (b.order) return 1;
+              return b.pa - a.pa; // sort by PA descending as fallback
+            });
+
+            return (
+              <div key={teamName} className="bg-[#111827] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
+                {/* Team header */}
+                <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-emerald-950/60 to-zinc-900 border-b border-zinc-800">
+                  <div className="flex items-center gap-2.5">
+                    <Users className="w-4 h-4 text-emerald-400" />
+                    <span className="text-sm font-black text-white">{teamName}</span>
+                    <span className="text-[10px] font-bold text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800">
+                      {lineup.length}名出場
+                    </span>
+                  </div>
+                  <div className="flex gap-4 text-[10px] font-bold text-zinc-400">
+                    <span>PA: <strong className="text-emerald-400">{lineup.reduce((s, p) => s + p.pa, 0)}</strong></span>
+                    <span>H: <strong className="text-amber-400">{lineup.reduce((s, p) => s + p.hits, 0)}</strong></span>
+                    <span>HR: <strong className="text-rose-400">{lineup.reduce((s, p) => s + p.hr, 0)}</strong></span>
+                  </div>
+                </div>
+
+                {/* Lineup table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-zinc-950/60 border-b border-zinc-800 text-zinc-500 font-bold tracking-wider">
+                        <th className="px-4 py-2.5 w-8">#</th>
+                        <th className="px-4 py-2.5 min-w-28">選手名</th>
+                        <th className="px-2 py-2.5 text-center">PA</th>
+                        <th className="px-2 py-2.5 text-center">AB</th>
+                        <th className="px-2 py-2.5 text-center">H</th>
+                        <th className="px-2 py-2.5 text-center">1B</th>
+                        <th className="px-2 py-2.5 text-center">2B</th>
+                        <th className="px-2 py-2.5 text-center">HR</th>
+                        <th className="px-2 py-2.5 text-center">BB</th>
+                        <th className="px-2 py-2.5 text-center">K</th>
+                        <th className="px-2 py-2.5 text-center">RBI</th>
+                        <th className="px-3 py-2.5 text-center">AVG</th>
+                        <th className="px-3 py-2.5 text-center">OBP</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-900">
+                      {lineup.map((player, idx) => {
+                        const avg = player.ab > 0 ? (player.hits / player.ab).toFixed(3) : '---';
+                        const obp = player.pa > 0 ? ((player.hits + player.bb) / player.pa).toFixed(3) : '---';
+                        return (
+                          <tr key={player.name} className={`hover:bg-zinc-900/50 transition-colors ${
+                            idx % 2 === 0 ? 'bg-transparent' : 'bg-zinc-950/20'
+                          }`}>
+                            <td className="px-4 py-2.5">
+                              <span className="w-5 h-5 rounded-full bg-zinc-800 text-zinc-400 text-[9px] font-black flex items-center justify-center">
+                                {player.order ?? (idx + 1)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                {player.number && (
+                                  <span className="text-[9px] font-black text-zinc-500 font-mono">#{player.number}</span>
+                                )}
+                                <span className="font-bold text-white">{player.name}</span>
+                                {player.positionType === 'pitcher' && (
+                                  <span className="text-[8px] bg-sky-950 text-sky-400 border border-sky-900 px-1 py-0.5 rounded font-black">P</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-mono text-zinc-300">{player.pa}</td>
+                            <td className="px-2 py-2.5 text-center font-mono text-zinc-400">{player.ab}</td>
+                            <td className="px-2 py-2.5 text-center font-mono font-bold text-amber-400">{player.hits}</td>
+                            <td className="px-2 py-2.5 text-center font-mono text-zinc-400">{player.b1}</td>
+                            <td className="px-2 py-2.5 text-center font-mono text-zinc-400">{player.b2}</td>
+                            <td className="px-2 py-2.5 text-center font-mono font-bold text-rose-400">{player.hr}</td>
+                            <td className="px-2 py-2.5 text-center font-mono text-zinc-400">{player.bb}</td>
+                            <td className="px-2 py-2.5 text-center font-mono text-zinc-400">{player.k}</td>
+                            <td className="px-2 py-2.5 text-center font-mono font-bold text-emerald-400">{player.rbi}</td>
+                            <td className="px-3 py-2.5 text-center font-mono font-bold">
+                              <span className={avg !== '---' ? (parseFloat(avg) >= 0.300 ? 'text-emerald-400' : parseFloat(avg) >= 0.250 ? 'text-amber-400' : 'text-zinc-300') : 'text-zinc-600'}>
+                                {avg}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-mono font-bold">
+                              <span className={obp !== '---' ? (parseFloat(obp) >= 0.350 ? 'text-emerald-400' : parseFloat(obp) >= 0.300 ? 'text-amber-400' : 'text-zinc-300') : 'text-zinc-600'}>
+                                {obp}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+
+          {gameDays.length > 0 && gameDayLineup.size === 0 && (
+            <div className="bg-[#111827] border border-zinc-800 rounded-2xl p-10 text-center text-zinc-500">
+              <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-bold">この試合日の打席データがありません</p>
+              <p className="text-xs mt-1 opacity-60">「打者」ラベルが付いたイベントが必要です</p>
+            </div>
+          )}
         </div>
       )}
     </div>
