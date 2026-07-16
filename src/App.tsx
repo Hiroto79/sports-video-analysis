@@ -109,6 +109,7 @@ function App() {
   const [newTeamId, setNewTeamId] = useState('');
   const [newTeamPassword, setNewTeamPassword] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchAdminAccounts = async () => {
     if (!supabase) {
@@ -169,6 +170,26 @@ function App() {
     } else {
       // Offline mock toggle not stored
     }
+    fetchAdminAccounts();
+  };
+
+  const handleAdminDeleteAccount = async (id: string) => {
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        alert('削除に失敗しました: ' + error.message);
+        setConfirmDeleteId(null);
+        return;
+      }
+    } else {
+      // Offline: remove from local usersDb
+      delete usersDb[id];
+      window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+    }
+    setConfirmDeleteId(null);
     fetchAdminAccounts();
   };
 
@@ -4447,18 +4468,28 @@ function App() {
                             </span>
                           </td>
                           <td className="p-3 text-right">
-                            {acc.id !== 'admin' && (
-                              <button
-                                onClick={() => handleAdminToggleActive(acc.id, acc.is_active)}
-                                className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
-                                  acc.is_active
-                                    ? 'bg-rose-950 hover:bg-rose-900 text-rose-400'
-                                    : 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400'
-                                }`}
-                              >
-                                {acc.is_active ? '契約停止' : '再開する'}
-                              </button>
-                            )}
+                            <div className="flex items-center justify-end gap-2">
+                              {acc.id !== 'admin' && (
+                                <button
+                                  onClick={() => handleAdminToggleActive(acc.id, acc.is_active)}
+                                  className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                                    acc.is_active
+                                      ? 'bg-rose-950 hover:bg-rose-900 text-rose-400'
+                                      : 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400'
+                                  }`}
+                                >
+                                  {acc.is_active ? '契約停止' : '再開する'}
+                                </button>
+                              )}
+                              {acc.id !== 'admin' && (
+                                <button
+                                  onClick={() => setConfirmDeleteId(acc.id)}
+                                  className="px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900"
+                                >
+                                  🗑 削除
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -4466,6 +4497,40 @@ function App() {
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Confirm Delete Account Modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-rose-900/50 rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="text-sm font-extrabold text-white">アカウント削除の確認</h3>
+            </div>
+            <p className="text-xs text-zinc-300 mb-1">
+              以下のアカウントを完全に削除します。
+            </p>
+            <p className="text-sm font-black text-rose-400 font-mono bg-rose-950/30 border border-rose-900/30 px-3 py-2 rounded-lg mb-4">
+              {confirmDeleteId}
+            </p>
+            <p className="text-[10px] text-zinc-500 mb-6">
+              この操作は取り消せません。削除後、このIDでのログインは一切できなくなります。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs font-black cursor-pointer transition-all"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => handleAdminDeleteAccount(confirmDeleteId)}
+                className="flex-1 py-2 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-xs font-black cursor-pointer transition-all shadow-lg shadow-rose-950/50"
+              >
+                削除する
+              </button>
             </div>
           </div>
         </div>
