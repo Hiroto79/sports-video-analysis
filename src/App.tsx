@@ -85,22 +85,19 @@ const TAG_GROUPS: { [group: string]: string[] } = {
 function App() {
   const [currentUser, setCurrentUser] = useState<string>(() => window.localStorage.getItem('sportscode_current_user') || '');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => window.localStorage.getItem('sportscode_is_logged_in') === 'true');
-  const [usersDb, setUsersDb] = useState<{ [key: string]: { name: string; password?: string } }>(() => {
+  const [usersDb] = useState<{ [key: string]: { name: string; password?: string } }>(() => {
     try {
       const saved = window.localStorage.getItem('sportscode_users_db');
       if (saved) return JSON.parse(saved);
     } catch {}
     return {
-      'default': { name: 'デフォルトユーザー', password: '' },
-      'tanaka': { name: '田中監督', password: '123' },
-      'sato': { name: '佐藤コーチ', password: '123' }
+      'default': { name: 'デフォルトアカウント', password: '' },
+      'baseball_team_a': { name: 'Aチーム監督', password: '123' },
+      'baseball_team_b': { name: 'Bチーム監督', password: '123' }
     };
   });
 
-  const [selectedUserId, setSelectedUserId] = useState('default');
-  const [isCreatingUser, setIsCreatingUser] = useState(false);
-  const [newUserId, setNewUserId] = useState('');
-  const [newUserName, setNewUserName] = useState('');
+  const [inputUserId, setInputUserId] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -108,7 +105,7 @@ function App() {
   const localStorage = {
     getItem: (key: string): string | null => {
       // Return normal values for global auth states
-      if (key === 'sportscode_current_user' || key === 'sportscode_is_logged_in' || key === 'sportscode_users_db') {
+      if (key === 'sportscode_current_user' || key === 'sportscode_current_password' || key === 'sportscode_is_logged_in' || key === 'sportscode_users_db') {
         return window.localStorage.getItem(key);
       }
       if (!currentUser) return window.localStorage.getItem(key);
@@ -119,7 +116,7 @@ function App() {
       return window.localStorage.getItem(key);
     },
     setItem: (key: string, value: string) => {
-      if (key === 'sportscode_current_user' || key === 'sportscode_is_logged_in' || key === 'sportscode_users_db') {
+      if (key === 'sportscode_current_user' || key === 'sportscode_current_password' || key === 'sportscode_is_logged_in' || key === 'sportscode_users_db') {
         window.localStorage.setItem(key, value);
         return;
       }
@@ -131,7 +128,7 @@ function App() {
       window.localStorage.setItem(userKey, value);
     },
     removeItem: (key: string) => {
-      if (key === 'sportscode_current_user' || key === 'sportscode_is_logged_in' || key === 'sportscode_users_db') {
+      if (key === 'sportscode_current_user' || key === 'sportscode_current_password' || key === 'sportscode_is_logged_in' || key === 'sportscode_users_db') {
         window.localStorage.removeItem(key);
         return;
       }
@@ -150,68 +147,129 @@ function App() {
     }
   };
 
-  const handlePerformLogin = () => {
-    const user = usersDb[selectedUserId];
-    if (!user) return;
-
-    if (user.password && user.password !== loginPassword) {
-      setLoginError('パスワードが正しくありません');
-      return;
-    }
-
-    // Login successful
-    window.localStorage.setItem('sportscode_current_user', selectedUserId);
-    window.localStorage.setItem('sportscode_is_logged_in', 'true');
-    setCurrentUser(selectedUserId);
-    setIsLoggedIn(true);
-    setLoginPassword('');
-    setLoginError(null);
-
-    // Notify other windows
-    channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: selectedUserId });
-
-    // Reload window to trigger complete state re-evaluation with scoped storage
-    window.location.reload();
-  };
-
-  const handleRegisterNewUser = () => {
-    if (!newUserId.trim()) {
+  const handlePerformLogin = async () => {
+    const trimmedId = inputUserId.trim();
+    if (!trimmedId) {
       setLoginError('ユーザーIDを入力してください');
       return;
     }
-    if (!newUserName.trim()) {
-      setLoginError('表示名を入力してください');
-      return;
+
+    // 1. Try to check credentials using Supabase table 'team_accounts'
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('team_accounts')
+          .select('password, is_active, team_name')
+          .eq('id', trimmedId)
+          .single();
+
+        if (error || !data) {
+          setLoginError('IDまたはパスワードが正しくありません');
+          return;
+        }
+
+        if (!data.is_active) {
+          setLoginError('サブスクリプションの有効期限が切れています。管理側にお問い合わせください。');
+          return;
+        }
+
+        if (data.password !== loginPassword) {
+          setLoginError('IDまたはパスワードが正しくありません');
+          return;
+        }
+
+        // Login successful via Supabase
+        window.localStorage.setItem('sportscode_current_user', trimmedId);
+        window.localStorage.setItem('sportscode_current_password', loginPassword);
+        window.localStorage.setItem('sportscode_is_logged_in', 'true');
+        setCurrentUser(trimmedId);
+        setIsLoggedIn(true);
+        setLoginPassword('');
+        setLoginError(null);
+        channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: trimmedId });
+        window.location.reload();
+        return;
+      } catch (err) {
+        console.warn("Supabase query failed, falling back to local simulation:", err);
+      }
     }
-    if (usersDb[newUserId]) {
-      setLoginError('このユーザーIDは既に登録されています');
+
+    // 2. Fallback to Local/Offline simulation
+    const user = usersDb[trimmedId];
+    if (!user) {
+      setLoginError('IDまたはパスワードが正しくありません (ローカル検証)');
       return;
     }
 
-    // Register
-    const updatedDb = { ...usersDb, [newUserId]: { name: newUserName, password: loginPassword } };
-    setUsersDb(updatedDb);
-    window.localStorage.setItem('sportscode_users_db', JSON.stringify(updatedDb));
+    if (user.password && user.password !== loginPassword) {
+      setLoginError('IDまたはパスワードが正しくありません (ローカル検証)');
+      return;
+    }
 
-    // Login automatically
-    window.localStorage.setItem('sportscode_current_user', newUserId);
+    // Login successful via Local Simulation
+    window.localStorage.setItem('sportscode_current_user', trimmedId);
+    window.localStorage.setItem('sportscode_current_password', loginPassword);
     window.localStorage.setItem('sportscode_is_logged_in', 'true');
-    setCurrentUser(newUserId);
+    setCurrentUser(trimmedId);
     setIsLoggedIn(true);
-    
-    // Reset
-    setIsCreatingUser(false);
-    setNewUserId('');
-    setNewUserName('');
     setLoginPassword('');
     setLoginError(null);
-
-    // Notify other windows
-    channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: newUserId });
-
-    // Reload window
+    channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: trimmedId });
     window.location.reload();
   };
+
+  const handleForceLogout = (reason: string) => {
+    window.localStorage.removeItem('sportscode_current_user');
+    window.localStorage.removeItem('sportscode_current_password');
+    window.localStorage.setItem('sportscode_is_logged_in', 'false');
+    setIsLoggedIn(false);
+    setCurrentUser('');
+    setLoginError(reason);
+    channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_OUT' });
+    window.location.reload();
+  };
+
+  // Periodic check to verify if the account is still valid (password hasn't changed, subscription hasn't expired)
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser) return;
+
+    const verifySession = async () => {
+      const savedPassword = window.localStorage.getItem('sportscode_current_password') || '';
+      
+      // If Supabase is active, check the cloud DB
+      if (supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('team_accounts')
+            .select('password, is_active')
+            .eq('id', currentUser)
+            .single();
+
+          if (!error && data) {
+            if (data.password !== savedPassword || !data.is_active) {
+              // Remote password changed or account deactivated (e.g. subscription expired!)
+              handleForceLogout('サブスクリプションの有効期限が切れたか、パスワードが変更されました。再度ログインしてください。');
+            }
+          }
+        } catch (err) {
+          console.warn("Session verification check failed:", err);
+        }
+      } else {
+        // Local simulation: Check usersDb
+        const user = usersDb[currentUser];
+        if (user && user.password !== savedPassword) {
+          handleForceLogout('パスワードが変更されました。再度ログインしてください。');
+        }
+      }
+    };
+
+    // Run verification on mount
+    verifySession();
+
+    // Check every 20 seconds
+    const interval = setInterval(verifySession, 20000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, currentUser, usersDb]);
 
   const [isCodeWindow, setIsCodeWindow] = useState(() => window.location.hash === '#code');
 
@@ -2710,68 +2768,35 @@ function App() {
               ⚾
             </div>
             <h2 className="text-lg font-black text-white mt-4 tracking-tight">SportsVideoAnalysis</h2>
-            <p className="text-xs text-zinc-400 mt-1">利用者を選択してログインしてください</p>
+            <p className="text-xs text-zinc-400 mt-1">IDとパスワードを入力してログインしてください</p>
           </div>
 
           <div className="space-y-4">
-            {/* User Select */}
+            {/* User ID Input */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-zinc-400">利用者アカウント</label>
-              {isCreatingUser ? (
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    placeholder="ユーザーID (ローマ字、例: tanaka)"
-                    value={newUserId}
-                    onChange={(e) => setNewUserId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
-                  />
-                  <input
-                    type="text"
-                    placeholder="表示名 (例: 田中監督)"
-                    value={newUserName}
-                    onChange={(e) => setNewUserName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
-                  />
-                </div>
-              ) : (
-                <div className="relative">
-                  <select
-                    value={selectedUserId}
-                    onChange={(e) => {
-                      if (e.target.value === 'new') {
-                        setIsCreatingUser(true);
-                      } else {
-                        setSelectedUserId(e.target.value);
-                      }
-                    }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold appearance-none cursor-pointer font-sans"
-                  >
-                    {Object.entries(usersDb).map(([id, info]) => (
-                      <option key={id} value={id}>{info.name} ({id})</option>
-                    ))}
-                    <option value="new">➕ 新しい利用者を登録...</option>
-                  </select>
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500 text-[10px]">
-                    ▼
-                  </div>
-                </div>
-              )}
+              <label className="text-[10px] font-bold text-zinc-400">ユーザーID (アカウントID)</label>
+              <input
+                type="text"
+                placeholder="ユーザーIDを入力"
+                value={inputUserId}
+                onChange={(e) => setInputUserId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handlePerformLogin();
+                }}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
+              />
             </div>
 
-            {/* Password */}
+            {/* Password Input */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-zinc-400">パスワード</label>
               <input
                 type="password"
-                placeholder={isCreatingUser ? "パスワードを設定 (初期値123)" : "パスワードを入力 (初期値123)"}
+                placeholder="パスワードを入力 (初期値123)"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (isCreatingUser) handleRegisterNewUser();
-                    else handlePerformLogin();
-                  }
+                  if (e.key === 'Enter') handlePerformLogin();
                 }}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
               />
@@ -2784,28 +2809,12 @@ function App() {
             )}
           </div>
 
-          <div className="flex gap-2.5 mt-2">
-            {isCreatingUser && (
-              <button
-                onClick={() => {
-                  setIsCreatingUser(false);
-                  setNewUserId('');
-                  setNewUserName('');
-                  setLoginPassword('');
-                  setLoginError(null);
-                }}
-                className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                キャンセル
-              </button>
-            )}
-            <button
-              onClick={isCreatingUser ? handleRegisterNewUser : handlePerformLogin}
-              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-emerald-950/30 hover:shadow-emerald-950/50 cursor-pointer text-center"
-            >
-              {isCreatingUser ? 'アカウント作成' : 'ログイン'}
-            </button>
-          </div>
+          <button
+            onClick={handlePerformLogin}
+            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-emerald-950/30 hover:shadow-emerald-950/50 cursor-pointer text-center active:scale-95"
+          >
+            ログイン
+          </button>
         </div>
       </div>
     );
