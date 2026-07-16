@@ -291,12 +291,7 @@ function App() {
       }
     }
 
-    if (databaseExists) {
-      if (!supabaseUser) {
-        setLoginError('IDまたはパスワードが正しくありません');
-        return;
-      }
-
+    if (databaseExists && supabaseUser) {
       if (!supabaseUser.is_active) {
         setLoginError('サブスクリプションの有効期限が切れています。管理側にお問い合わせください。');
         return;
@@ -322,26 +317,27 @@ function App() {
 
     // 2. Fallback to Local/Offline simulation
     const user = usersDb[trimmedId];
-    if (!user) {
-      setLoginError('IDまたはパスワードが正しくありません (ローカル検証)');
+    if (user) {
+      if (user.password && user.password !== loginPassword) {
+        setLoginError('IDまたはパスワードが正しくありません');
+        return;
+      }
+
+      // Login successful via Local Simulation
+      window.localStorage.setItem('sportscode_current_user', trimmedId);
+      window.localStorage.setItem('sportscode_current_password', loginPassword);
+      window.localStorage.setItem('sportscode_is_logged_in', 'true');
+      setCurrentUser(trimmedId);
+      setIsLoggedIn(true);
+      setLoginPassword('');
+      setLoginError(null);
+      channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: trimmedId });
+      window.location.reload();
       return;
     }
 
-    if (user.password && user.password !== loginPassword) {
-      setLoginError('IDまたはパスワードが正しくありません (ローカル検証)');
-      return;
-    }
-
-    // Login successful via Local Simulation
-    window.localStorage.setItem('sportscode_current_user', trimmedId);
-    window.localStorage.setItem('sportscode_current_password', loginPassword);
-    window.localStorage.setItem('sportscode_is_logged_in', 'true');
-    setCurrentUser(trimmedId);
-    setIsLoggedIn(true);
-    setLoginPassword('');
-    setLoginError(null);
-    channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: trimmedId });
-    window.location.reload();
+    // If both database check and local check failed
+    setLoginError('IDまたはパスワードが正しくありません');
   };
 
   const handleForceLogout = (reason: string) => {
