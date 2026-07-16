@@ -15,6 +15,9 @@
     "release:mac": "npm run build && npx electron-builder --mac --publish always",
     "release:win": "npm run build && npx electron-builder --win --publish always",
     "release:all": "npm run build && npx electron-builder --mac --win --publish always",
+    "build:mac": "npm run build && npx electron-builder --mac --publish never",
+    "build:win": "npm run build && npx electron-builder --win --publish never",
+    "build:all": "npm run build && npx electron-builder --mac --win --publish never",
     "lint": "oxlint",
     "preview": "vite preview"
   },
