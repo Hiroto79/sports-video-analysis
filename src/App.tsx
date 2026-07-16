@@ -9,7 +9,7 @@ import { OrganizerView } from './components/OrganizerView';
 import { MatrixView } from './components/MatrixView';
 import { MatrixPlayerModal } from './components/MatrixPlayerModal';
 import { supabase } from './lib/supabase';
-import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download } from 'lucide-react';
+import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw } from 'lucide-react';
 
 // Default initial roster
 const INITIAL_PLAYERS: Player[] = [];
@@ -190,6 +190,11 @@ function App() {
   const [isTimeShiftModalOpen, setIsTimeShiftModalOpen] = useState(false);
   const [timeShiftOffset, setTimeShiftOffset] = useState('');
   const [timeShiftTarget, setTimeShiftTarget] = useState<'all' | 'selected'>('all');
+
+  // In-app Update Simulation States
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [updateStep, setUpdateStep] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'completed' | 'uptodate'>('idle');
+  const [updateDownloadProgress, setUpdateDownloadProgress] = useState(0);
 
   // Timeline multi-selection state
   const [timelineSelectedIds, setTimelineSelectedIds] = useState<Set<string>>(new Set());
@@ -1044,6 +1049,41 @@ function App() {
     setMatrixPlayerClips(clips);
     setMatrixPlayerTitle(title);
     setIsMatrixPlayerOpen(true);
+  };
+
+  // In-app Update Simulation Handlers
+  const handleCheckForUpdates = () => {
+    setIsUpdateModalOpen(true);
+    setUpdateStep('checking');
+    
+    // Simulate network checking
+    setTimeout(() => {
+      setUpdateStep('available');
+    }, 1500);
+  };
+
+  const handleStartUpdateDownload = () => {
+    setUpdateStep('downloading');
+    setUpdateDownloadProgress(0);
+
+    const interval = setInterval(() => {
+      setUpdateDownloadProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setUpdateStep('completed');
+          }, 600);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 150);
+  };
+
+  const handleApplyUpdateReload = () => {
+    setIsUpdateModalOpen(false);
+    setUpdateStep('idle');
+    window.location.reload();
   };
 
   const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix') => {
@@ -2905,6 +2945,16 @@ function App() {
             <ExternalLink className="w-3 h-3" />
             コードウィンドウをポップアウト
           </button>
+
+          {/* Simulate Update button */}
+          <button
+            onClick={handleCheckForUpdates}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/40 border border-rose-800/80 hover:bg-rose-900/60 text-[10px] font-bold text-rose-400 hover:text-white rounded-lg cursor-pointer transition-colors shadow"
+            title="アプリの更新（Live Updates）を確認します"
+          >
+            <RefreshCw className="w-3 h-3 text-rose-500 animate-spin-slow" />
+            アップデートを確認
+          </button>
         </div>
       </header>
 
@@ -3750,6 +3800,95 @@ function App() {
                 適用する
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔄 アプリケーション・アップデート（Live Updates）シミュレーション */}
+      {isUpdateModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-5 text-center">
+            
+            {updateStep === 'checking' && (
+              <div className="py-6 flex flex-col items-center gap-4">
+                <RefreshCw className="w-10 h-10 text-rose-500 animate-spin" />
+                <div>
+                  <h4 className="text-sm font-extrabold text-white">アップデートを確認中...</h4>
+                  <p className="text-[10px] text-zinc-400 mt-1">最新のパッケージ情報を取得しています</p>
+                </div>
+              </div>
+            )}
+
+            {updateStep === 'available' && (
+              <div className="flex flex-col gap-4">
+                <div className="mx-auto w-12 h-12 bg-rose-950/60 text-rose-400 rounded-full flex items-center justify-center text-xl">
+                  🚀
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-white">新しいアップデートが見つかりました！</h4>
+                  <div className="flex items-center justify-center gap-2 mt-1.5 font-mono text-[10px]">
+                    <span className="text-zinc-500">現在: v1.0.0</span>
+                    <span className="text-zinc-400">→</span>
+                    <span className="text-rose-400 font-bold bg-rose-950 px-2 py-0.5 rounded">最新: v1.1.0</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mt-3 text-left bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 leading-relaxed font-mono">
+                    【更新内容】<br />
+                    ・ダッシュボードでの複数CSV一括読込に対応<br />
+                    ・Savantチーム総合分析のフィルタ切り替えを追加<br />
+                    ・その他UIレスポンシブ表示の最適化
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-end mt-2">
+                  <button
+                    onClick={() => setIsUpdateModalOpen(false)}
+                    className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    後で
+                  </button>
+                  <button
+                    onClick={handleStartUpdateDownload}
+                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold shadow cursor-pointer transition-all"
+                  >
+                    今すぐ更新 (Live Update)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {updateStep === 'downloading' && (
+              <div className="py-4 flex flex-col gap-4">
+                <div className="flex justify-between items-center text-xs font-bold text-zinc-300">
+                  <span>パッケージをダウンロード中...</span>
+                  <span className="font-mono text-rose-400">{updateDownloadProgress}%</span>
+                </div>
+                <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-800">
+                  <div 
+                    className="bg-rose-500 h-full transition-all duration-150 rounded-full"
+                    style={{ width: `${updateDownloadProgress}%` }}
+                  />
+                </div>
+                <p className="text-[9px] text-zinc-500">ダウンロード完了後、アプリが自動的に再読み込みされます。</p>
+              </div>
+            )}
+
+            {updateStep === 'completed' && (
+              <div className="flex flex-col gap-4">
+                <div className="mx-auto w-12 h-12 bg-emerald-950/60 text-emerald-400 rounded-full flex items-center justify-center text-xl">
+                  ✓
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-white">アップデートの準備が完了しました！</h4>
+                  <p className="text-[10px] text-zinc-400 mt-1">「再起動」を押すと最新版がすぐに反映されます。</p>
+                </div>
+                <button
+                  onClick={handleApplyUpdateReload}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow cursor-pointer transition-all"
+                >
+                  アプリを再起動して適用する
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       )}
