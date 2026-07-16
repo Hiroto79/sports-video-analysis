@@ -423,6 +423,9 @@ function App() {
   const [teamAColor, setTeamAColor] = useState(() => localStorage.getItem('sportscode_teama_color') || 'amber');
   const [teamBColor, setTeamBColor] = useState(() => localStorage.getItem('sportscode_teamb_color') || 'sky');
 
+  // Game date state: manually set game date for tagging session (stored as YYYY-MM-DD)
+  const [gameDate, setGameDate] = useState<string>(() => localStorage.getItem('sportscode_game_date') || '');
+
   const [players, setPlayers] = useState<Player[]>(() => {
     const saved = localStorage.getItem('sportscode_players') || localStorage.getItem('sportscode_designer_roster');
     if (saved) {
@@ -2682,7 +2685,8 @@ function App() {
         actionName: eventName,
         color: btn.color,
         labels: baseballLabels,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        gameDate: gameDate || undefined
       };
 
       setEvents(prev => [newEvent, ...prev]);
@@ -3616,9 +3620,41 @@ function App() {
       ) : (
         /* RENDER TAGGER WORKSPACE VIEW */
         <main className="flex-1 p-4 lg:p-6 max-w-5xl mx-auto w-full flex flex-col gap-4 lg:gap-6 min-w-0">
-          
 
-
+          {/* Game Date Bar */}
+          <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 shadow">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">📅 試合日</span>
+            <input
+              type="date"
+              value={gameDate}
+              onChange={e => {
+                setGameDate(e.target.value);
+                localStorage.setItem('sportscode_game_date', e.target.value);
+              }}
+              className="bg-zinc-950 border border-zinc-700 text-white font-mono text-sm px-3 py-1 rounded-lg focus:outline-none focus:border-emerald-500 cursor-pointer"
+            />
+            {gameDate && (
+              <span className="text-[10px] text-emerald-400 font-bold">
+                ✓ この日付でタグが記録されます
+              </span>
+            )}
+            {!gameDate && (
+              <span className="text-[10px] text-zinc-600">
+                ← 試合日を設定してからタグを打ってください
+              </span>
+            )}
+            {gameDate && (
+              <button
+                onClick={() => {
+                  setGameDate('');
+                  localStorage.removeItem('sportscode_game_date');
+                }}
+                className="ml-auto text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
+              >
+                ✕ クリア
+              </button>
+            )}
+          </div>
         {/* Visual Timeline (Sportscode Style) */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow">
           {/* Header */}

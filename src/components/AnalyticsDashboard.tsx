@@ -1028,9 +1028,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const gameDays = useMemo(() => {
     const dayMap = new Map<string, TaggedEvent[]>();
     activeEvents.forEach(ev => {
-      const dateStr = new Date(ev.createdAt).toLocaleDateString('ja-JP', {
-        year: 'numeric', month: '2-digit', day: '2-digit'
-      });
+      // Use manually set gameDate if available, otherwise fall back to createdAt date
+      const dateStr = ev.gameDate
+        ? ev.gameDate  // Already YYYY-MM-DD string
+        : new Date(ev.createdAt).toLocaleDateString('ja-JP', {
+            year: 'numeric', month: '2-digit', day: '2-digit'
+          });
       if (!dayMap.has(dateStr)) dayMap.set(dateStr, []);
       dayMap.get(dateStr)!.push(ev);
     });

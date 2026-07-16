@@ -45,6 +45,7 @@ export interface TaggedEvent {
   color: string;        // Visual color representing the event
   labels: Record<string, string>; // Mapped metadata, e.g. {"Pitch Type": "Fastball", "Result": "Strike", "Count": "1-1"}
   createdAt: number;    // Wall clock timestamp
+  gameDate?: string;    // Manually set game date (YYYY-MM-DD), overrides createdAt for analytics grouping
 }
 
 export interface CustomPreset {
