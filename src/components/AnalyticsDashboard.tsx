@@ -810,6 +810,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const [selectedPitcherName, setSelectedPitcherName] = useState<string>('all');
   const [batterVsHand, setBatterVsHand] = useState<'all' | 'R' | 'L'>('all');
   const [pitcherVsHand, setPitcherVsHand] = useState<'all' | 'R' | 'L'>('all');
+  const [selectedTeam, setSelectedTeam] = useState<string>('all');
 
   // Load custom quick button mapping to sync names/groups exactly with designer config
   const quickCustomMap = useMemo(() => {
@@ -886,10 +887,29 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
   const activeEvents = dataMode === 'current' ? currentEvents : csvEvents;
 
+  // Unique Teams List
+  const teamNames = useMemo(() => {
+    const set = new Set<string>();
+    activeEvents.forEach(e => {
+      const t = getLabelValueByKeywords(e.labels, ['team', 'チーム', '球団']);
+      if (t && t !== '-') set.add(t.toString());
+    });
+    return Array.from(set).sort();
+  }, [activeEvents]);
+
+  // Filter events by selected team for Team Stats Overview
+  const filteredTeamEvents = useMemo(() => {
+    if (selectedTeam === 'all') return activeEvents;
+    return activeEvents.filter(e => {
+      const t = getLabelValueByKeywords(e.labels, ['team', 'チーム', '球団']);
+      return t === selectedTeam;
+    });
+  }, [activeEvents, selectedTeam]);
+
   // 1. Team stats calculation
   const teamStats = useMemo(() => {
-    return calculateSavantStats(activeEvents, quickCustomMap);
-  }, [activeEvents, quickCustomMap]);
+    return calculateSavantStats(filteredTeamEvents, quickCustomMap);
+  }, [filteredTeamEvents, quickCustomMap]);
 
   // Unique Batters & Pitchers List
   const batterNames = useMemo(() => {
@@ -1041,6 +1061,20 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       {/* TAB 1: SAVANT TEAM OVERVIEW & OPS */}
       {selectedTab === 'savant' && (
         <div className="space-y-6">
+          <div className="flex items-center gap-3 bg-[#111827] p-4 rounded-2xl border border-zinc-800">
+            <label className="text-xs font-bold text-zinc-400">分析対象のチームを選択:</label>
+            <select
+              value={selectedTeam}
+              onChange={(e) => setSelectedTeam(e.target.value)}
+              className="bg-zinc-950 border border-zinc-800 text-rose-400 font-bold text-sm px-3 py-1.5 rounded-xl focus:outline-none cursor-pointer"
+            >
+              <option value="all">全チーム合計</option>
+              {teamNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* TOP HIGHLIGHT: OPS & MAIN DASHBOARD CARDS */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             {/* GIANT OPS CARD */}
