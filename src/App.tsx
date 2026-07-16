@@ -170,15 +170,17 @@ function App() {
           supabaseUser = data;
           databaseExists = true;
         } else if (error && error.code !== 'PGRST116') {
+          console.error("Supabase login connection/table error:", error);
           // If the error code is not 'no rows found' (PGRST116), the table doesn't exist or network is down.
           // Fall back to local simulation.
           databaseExists = false;
         } else {
+          console.warn("Supabase user row not found (PGRST116):", error);
           // No rows found: the database exists but this ID was not found.
           databaseExists = true;
         }
       } catch (err) {
-        console.warn("Supabase query failed, falling back to local simulation:", err);
+        console.error("Supabase query failed exception:", err);
       }
     }
 
