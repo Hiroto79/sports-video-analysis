@@ -155,6 +155,9 @@ function App() {
     }
 
     // 1. Try to check credentials using Supabase table 'team_accounts'
+    let supabaseUser = null;
+    let databaseExists = false;
+
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -163,35 +166,49 @@ function App() {
           .eq('id', trimmedId)
           .single();
 
-        if (error || !data) {
-          setLoginError('IDまたはパスワードが正しくありません');
-          return;
+        if (!error && data) {
+          supabaseUser = data;
+          databaseExists = true;
+        } else if (error && error.code !== 'PGRST116') {
+          // If the error code is not 'no rows found' (PGRST116), the table doesn't exist or network is down.
+          // Fall back to local simulation.
+          databaseExists = false;
+        } else {
+          // No rows found: the database exists but this ID was not found.
+          databaseExists = true;
         }
-
-        if (!data.is_active) {
-          setLoginError('サブスクリプションの有効期限が切れています。管理側にお問い合わせください。');
-          return;
-        }
-
-        if (data.password !== loginPassword) {
-          setLoginError('IDまたはパスワードが正しくありません');
-          return;
-        }
-
-        // Login successful via Supabase
-        window.localStorage.setItem('sportscode_current_user', trimmedId);
-        window.localStorage.setItem('sportscode_current_password', loginPassword);
-        window.localStorage.setItem('sportscode_is_logged_in', 'true');
-        setCurrentUser(trimmedId);
-        setIsLoggedIn(true);
-        setLoginPassword('');
-        setLoginError(null);
-        channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: trimmedId });
-        window.location.reload();
-        return;
       } catch (err) {
         console.warn("Supabase query failed, falling back to local simulation:", err);
       }
+    }
+
+    if (databaseExists) {
+      if (!supabaseUser) {
+        setLoginError('IDまたはパスワードが正しくありません');
+        return;
+      }
+
+      if (!supabaseUser.is_active) {
+        setLoginError('サブスクリプションの有効期限が切れています。管理側にお問い合わせください。');
+        return;
+      }
+
+      if (supabaseUser.password !== loginPassword) {
+        setLoginError('IDまたはパスワードが正しくありません');
+        return;
+      }
+
+      // Login successful via Supabase
+      window.localStorage.setItem('sportscode_current_user', trimmedId);
+      window.localStorage.setItem('sportscode_current_password', loginPassword);
+      window.localStorage.setItem('sportscode_is_logged_in', 'true');
+      setCurrentUser(trimmedId);
+      setIsLoggedIn(true);
+      setLoginPassword('');
+      setLoginError(null);
+      channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_IN', userId: trimmedId });
+      window.location.reload();
+      return;
     }
 
     // 2. Fallback to Local/Offline simulation
