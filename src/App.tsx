@@ -9,7 +9,7 @@ import { OrganizerView } from './components/OrganizerView';
 import { MatrixView } from './components/MatrixView';
 import { MatrixPlayerModal } from './components/MatrixPlayerModal';
 import { supabase } from './lib/supabase';
-import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw } from 'lucide-react';
+import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users } from 'lucide-react';
 
 // Default initial roster
 const INITIAL_PLAYERS: Player[] = [];
@@ -93,13 +93,120 @@ function App() {
     return {
       'default': { name: 'デフォルトアカウント', password: '' },
       'baseball_team_a': { name: 'Aチーム監督', password: '123' },
-      'baseball_team_b': { name: 'Bチーム監督', password: '123' }
+      'baseball_team_b': { name: 'Bチーム監督', password: '123' },
+      'admin': { name: 'システム管理者', password: 'admin' }
     };
   });
 
   const [inputUserId, setInputUserId] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Administrator Account Management panel states
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminAccountsList, setAdminAccountsList] = useState<any[]>([]);
+  const [adminPanelError, setAdminPanelError] = useState<string | null>(null);
+  const [newTeamId, setNewTeamId] = useState('');
+  const [newTeamPassword, setNewTeamPassword] = useState('');
+  const [newTeamName, setNewTeamName] = useState('');
+
+  const fetchAdminAccounts = async () => {
+    if (!supabase) {
+      // Offline fallback: Use usersDb
+      const mockList = Object.entries(usersDb).map(([id, info]) => ({
+        id,
+        password: info.password || '',
+        team_name: info.name,
+        is_active: true
+      }));
+      setAdminAccountsList(mockList);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('team_accounts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (!error && data) {
+        setAdminAccountsList(data);
+        setAdminPanelError(null);
+      } else {
+        setAdminPanelError(error?.message || 'アカウント一覧の取得に失敗しました');
+      }
+    } catch (err: any) {
+      setAdminPanelError(err?.message || 'エラーが発生しました');
+    }
+  };
+
+  const handleAdminUpdatePassword = async (id: string, newPass: string) => {
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .update({ password: newPass })
+        .eq('id', id);
+      if (error) {
+        alert('パスワード更新に失敗しました: ' + error.message);
+        return;
+      }
+    } else {
+      usersDb[id] = { ...usersDb[id], password: newPass };
+      window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+    }
+    fetchAdminAccounts();
+  };
+
+  const handleAdminToggleActive = async (id: string, currentStatus: boolean) => {
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .update({ is_active: !currentStatus })
+        .eq('id', id);
+      if (error) {
+        alert('状態の更新に失敗しました: ' + error.message);
+        return;
+      }
+    } else {
+      // Offline mock toggle not stored
+    }
+    fetchAdminAccounts();
+  };
+
+  const handleAdminCreateTeam = async () => {
+    if (!newTeamId.trim() || !newTeamPassword.trim()) {
+      alert('IDとパスワードを入力してください');
+      return;
+    }
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .insert({
+          id: newTeamId.trim(),
+          password: newTeamPassword.trim(),
+          team_name: newTeamName.trim() || null,
+          is_active: true
+        });
+      if (error) {
+        alert('登録に失敗しました: ' + error.message);
+        return;
+      }
+    } else {
+      usersDb[newTeamId] = { name: newTeamName || newTeamId, password: newTeamPassword };
+      window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+    }
+
+    setNewTeamId('');
+    setNewTeamPassword('');
+    setNewTeamName('');
+    fetchAdminAccounts();
+  };
+
+  useEffect(() => {
+    if (showAdminPanel) {
+      fetchAdminAccounts();
+    }
+  }, [showAdminPanel]);
 
   // Scoped localStorage wrapper using lexical scoping
   const localStorage = {
@@ -2811,7 +2918,7 @@ function App() {
               <label className="text-[10px] font-bold text-zinc-400">パスワード</label>
               <input
                 type="password"
-                placeholder="パスワードを入力 (初期値123)"
+                placeholder="パスワードを入力"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 onKeyDown={(e) => {
@@ -3239,6 +3346,16 @@ function App() {
           {/* User profile dropdown / logout */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-[10px]">
             <span className="font-bold text-zinc-400">👤 {usersDb[currentUser]?.name || currentUser}</span>
+            {currentUser === 'admin' && (
+              <button
+                onClick={() => setShowAdminPanel(true)}
+                className="flex items-center gap-1 bg-emerald-700/80 hover:bg-emerald-600 text-[9px] font-bold text-white px-2 py-0.5 rounded cursor-pointer transition-colors"
+                title="アカウント契約・ライセンス管理を開きます"
+              >
+                <Users className="w-2.5 h-2.5" />
+                管理
+              </button>
+            )}
             <button
               onClick={() => {
                 window.localStorage.removeItem('sportscode_current_user');
@@ -4189,6 +4306,135 @@ function App() {
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+      {/* 5. ADMINISTRATOR PANEL MODAL */}
+      {showAdminPanel && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/40">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-500" />
+                <h3 className="text-sm font-extrabold text-white">ライセンス契約・アカウント管理（管理者）</h3>
+              </div>
+              <button 
+                onClick={() => setShowAdminPanel(false)}
+                className="text-zinc-500 hover:text-white text-xs font-bold px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg cursor-pointer transition-all"
+              >
+                閉じる
+              </button>
+            </div>
+
+            {/* Content (Scrollable) */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Account Creator Form */}
+              <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl space-y-4">
+                <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">➕ 新規チーム（アカウント）登録</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-zinc-500 font-bold">ユーザーID</label>
+                    <input
+                      type="text"
+                      placeholder="例: team_braves"
+                      value={newTeamId}
+                      onChange={(e) => setNewTeamId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                      className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-zinc-500 font-bold">パスワード</label>
+                    <input
+                      type="text"
+                      placeholder="パスワード"
+                      value={newTeamPassword}
+                      onChange={(e) => setNewTeamPassword(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-zinc-500 font-bold">チーム表示名</label>
+                    <input
+                      type="text"
+                      placeholder="例: ブレーブス"
+                      value={newTeamName}
+                      onChange={(e) => setNewTeamName(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleAdminCreateTeam}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center"
+                >
+                  新しいアカウントを保存
+                </button>
+              </div>
+
+              {/* Accounts List Table */}
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
+                {adminPanelError && (
+                  <p className="text-xs text-rose-500 font-bold bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-lg">
+                    ⚠️ {adminPanelError}
+                  </p>
+                )}
+                
+                <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/20">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold">
+                        <th className="p-3">ユーザーID</th>
+                        <th className="p-3">チーム名</th>
+                        <th className="p-3">パスワード</th>
+                        <th className="p-3 text-center">サブスク状態</th>
+                        <th className="p-3 text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-850">
+                      {adminAccountsList.map((acc) => (
+                        <tr key={acc.id} className="hover:bg-zinc-900/40 text-zinc-300">
+                          <td className="p-3 font-mono font-bold text-white">{acc.id}</td>
+                          <td className="p-3 font-bold">{acc.team_name || '---'}</td>
+                          <td className="p-3">
+                            <input
+                              type="text"
+                              value={acc.password}
+                              onChange={(e) => handleAdminUpdatePassword(acc.id, e.target.value)}
+                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white font-mono font-bold w-24 text-center focus:outline-none focus:border-emerald-500"
+                            />
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
+                              acc.is_active 
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' 
+                                : 'bg-rose-950 text-rose-400 border border-rose-900'
+                            }`}>
+                              {acc.is_active ? 'アクティブ' : '停止中'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            {acc.id !== 'admin' && (
+                              <button
+                                onClick={() => handleAdminToggleActive(acc.id, acc.is_active)}
+                                className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                                  acc.is_active
+                                    ? 'bg-rose-950 hover:bg-rose-900 text-rose-400'
+                                    : 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400'
+                                }`}
+                              >
+                                {acc.is_active ? '契約停止' : '再開する'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
