@@ -1204,21 +1204,38 @@ function App() {
 
   const handleAdminCreateTeam = async () => {
     const trimmedId = newTeamId.trim();
-    if (!trimmedId || !newTeamPassword.trim()) {
+    const trimmedPass = newTeamPassword.trim();
+    if (!trimmedId || !trimmedPass) {
       alert('IDとパスワードを入力してください');
       return;
     }
 
     if (supabase) {
-      const { error } = await supabase
+      const emailVal = newTeamEmail.trim() || null;
+      // 1. Try insert with email column
+      let { error } = await supabase
         .from('team_accounts')
         .insert({
           id: trimmedId,
-          password: newTeamPassword.trim(),
+          password: trimmedPass,
           team_name: newTeamName.trim() || null,
-          email: newTeamEmail.trim() || null,
+          ...(emailVal ? { email: emailVal } : {}),
           is_active: true
         });
+
+      // 2. If 'email' column does not exist in Supabase schema cache, retry without email
+      if (error && (error.message.includes("Could not find the 'email' column") || error.code === 'PGRST204')) {
+        const fallbackRes = await supabase
+          .from('team_accounts')
+          .insert({
+            id: trimmedId,
+            password: trimmedPass,
+            team_name: newTeamName.trim() || null,
+            is_active: true
+          });
+        error = fallbackRes.error;
+      }
+
       if (error) {
         if (error.message.includes('duplicate key') || error.code === '23505') {
           alert(`⚠️ ユーザーID「${trimmedId}」は既に存在・登録されています。別のIDをご指定いただくか、下のアカウント一覧で既存データを編集してください。`);
@@ -1236,6 +1253,7 @@ function App() {
     setNewTeamPassword('');
     setNewTeamName('');
     setNewTeamEmail('');
+    showToast(`✅ 新規アカウント「${trimmedId}」を作成しました！`);
     fetchAdminAccounts();
   };
 
