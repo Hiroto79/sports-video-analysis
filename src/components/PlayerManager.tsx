@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Trash2, Upload, Users } from 'lucide-react';
+import { Trash2, Upload, Users, FileSpreadsheet } from 'lucide-react';
 import type { Player } from '../types';
 
 interface PlayerManagerProps {
@@ -137,6 +137,18 @@ export const PlayerManager: React.FC<PlayerManagerProps> = ({
     setOrderB('');
   };
 
+  const handleDownloadTemplate = () => {
+    const csvContent = "名前,背番号,投,打,役割\n鈴木一郎,51,右,左,野手\n大谷翔平,16,右,左,二刀流\n山本由伸,18,右,右,投手\nテスト選手,99,,,野手\n";
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', '選手登録テンプレート.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // CSV parsing function with position type support (Batter vs Pitcher auto-detect)
   const handleCsvImport = (e: React.ChangeEvent<HTMLInputElement>, teamKey: 'teamA' | 'teamB') => {
     const file = e.target.files?.[0];
@@ -186,7 +198,9 @@ export const PlayerManager: React.FC<PlayerManagerProps> = ({
       const idxName = headers.findIndex(h => /name|名前|選手/i.test(h));
       const idxNum = headers.findIndex(h => /number|no|番号|背番号/i.test(h));
       const idxHotkey = headers.findIndex(h => /hotkey|キー/i.test(h));
-      const idxHand = headers.findIndex(h => /hand|throws|投打|投|打|利き腕/i.test(h));
+      const idxHand = headers.findIndex(h => /hand|throws|投打|利き腕/i.test(h));
+      const idxThrows = headers.findIndex(h => /^投$/i.test(h) || /throws|投球/i.test(h));
+      const idxBats = headers.findIndex(h => /^打$/i.test(h) || /bats|打撃/i.test(h));
 
       // Track default states during row iteration
       let currentSectionPos: 'batter' | 'pitcher' | 'both' = isPitchingFile ? 'pitcher' : 'batter';
@@ -309,40 +323,63 @@ export const PlayerManager: React.FC<PlayerManagerProps> = ({
         let pThrows: 'R' | 'L' = 'R';
         let pBats: 'R' | 'L' | 'S' = 'R';
 
-        // Check if hands info is available in row
-        let handVal = '';
-        if (headers.length > 0 && idxHand !== -1 && row[idxHand]) {
-          handVal = row[idxHand];
-        } else {
-          // Scan row for hand pattern
-          for (let colIdx = 0; colIdx < row.length; colIdx++) {
-            const val = row[colIdx];
-            if (val && (val.includes('右') || val.includes('左') || val.includes('両') || /^[rls]$/i.test(val))) {
-              handVal = val;
-              break;
+        // 1. Check if separate '投' (throws) and '打' (bats) columns exist
+        let parsedSeparateHands = false;
+        if (headers.length > 0) {
+          if (idxThrows !== -1) {
+            const tVal = row[idxThrows]?.trim() || '';
+            pThrows = (tVal.includes('左') || /^[lL]$/.test(tVal)) ? 'L' : 'R';
+            parsedSeparateHands = true;
+          }
+          if (idxBats !== -1) {
+            const bVal = row[idxBats]?.trim() || '';
+            if (bVal.includes('左') || /^[lL]$/.test(bVal)) {
+              pBats = 'L'; pHand = 'L';
+            } else if (bVal.includes('両') || /^[sS]$/.test(bVal)) {
+              pBats = 'S'; pHand = 'S';
+            } else {
+              pBats = 'R'; pHand = 'R';
             }
+            parsedSeparateHands = true;
           }
         }
 
-        if (handVal) {
-          const handText = handVal.toLowerCase();
-          if (handText.includes('右投右打') || handText === '右/右') {
-            pThrows = 'R'; pBats = 'R'; pHand = 'R';
-          } else if (handText.includes('右投左打') || handText === '右/左') {
-            pThrows = 'R'; pBats = 'L'; pHand = 'L';
-          } else if (handText.includes('左投左打') || handText === '左/左') {
-            pThrows = 'L'; pBats = 'L'; pHand = 'L';
-          } else if (handText.includes('左投右打') || handText === '左/右') {
-            pThrows = 'L'; pBats = 'R'; pHand = 'R';
-          } else if (handText.includes('右投両打') || handText === '右/両' || handText === '右/s') {
-            pThrows = 'R'; pBats = 'S'; pHand = 'S';
-          } else if (handText.includes('左投両打') || handText === '左/両' || handText === '左/s') {
-            pThrows = 'L'; pBats = 'S'; pHand = 'S';
+        // 2. Fallback to combined hand info if separate ones weren't detected
+        if (!parsedSeparateHands) {
+          let handVal = '';
+          if (headers.length > 0 && idxHand !== -1 && row[idxHand]) {
+            handVal = row[idxHand];
           } else {
-            if (handText.includes('左') || handText.includes('l')) {
+            // Scan row for hand pattern
+            for (let colIdx = 0; colIdx < row.length; colIdx++) {
+              const val = row[colIdx];
+              if (val && (val.includes('右') || val.includes('左') || val.includes('両') || /^[rls]$/i.test(val))) {
+                handVal = val;
+                break;
+              }
+            }
+          }
+
+          if (handVal) {
+            const handText = handVal.toLowerCase();
+            if (handText.includes('右投右打') || handText === '右/右') {
+              pThrows = 'R'; pBats = 'R'; pHand = 'R';
+            } else if (handText.includes('右投左打') || handText === '右/左') {
+              pThrows = 'R'; pBats = 'L'; pHand = 'L';
+            } else if (handText.includes('左投左打') || handText === '左/左') {
               pThrows = 'L'; pBats = 'L'; pHand = 'L';
-            } else if (handText.includes('両') || handText.includes('s')) {
+            } else if (handText.includes('左投右打') || handText === '左/右') {
+              pThrows = 'L'; pBats = 'R'; pHand = 'R';
+            } else if (handText.includes('右投両打') || handText === '右/両' || handText === '右/s') {
               pThrows = 'R'; pBats = 'S'; pHand = 'S';
+            } else if (handText.includes('左投両打') || handText === '左/両' || handText === '左/s') {
+              pThrows = 'L'; pBats = 'S'; pHand = 'S';
+            } else {
+              if (handText.includes('左') || handText.includes('l')) {
+                pThrows = 'L'; pBats = 'L'; pHand = 'L';
+              } else if (handText.includes('両') || handText.includes('s')) {
+                pThrows = 'R'; pBats = 'S'; pHand = 'S';
+              }
             }
           }
         }
@@ -383,6 +420,14 @@ export const PlayerManager: React.FC<PlayerManagerProps> = ({
           チーム登録・選手名簿
         </h3>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadTemplate}
+            className="text-[9px] bg-zinc-800 hover:bg-zinc-700 text-sky-400 border border-zinc-700 px-2 py-0.5 rounded font-bold transition-all flex items-center gap-1 cursor-pointer"
+            title="選手名簿登録用のCSVテンプレートファイルをダウンロードします"
+          >
+            <FileSpreadsheet className="w-2.5 h-2.5" />
+            テンプレートDL
+          </button>
           {onClearRoster && players.length > 0 && (
             <button
               onClick={() => {

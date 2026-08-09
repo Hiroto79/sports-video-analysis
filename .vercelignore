@@ -1,0 +1,10 @@
+release_output
+build_output
+android
+ios
+node_modules
+dist
+scratch
+.git
+*.dmg
+*.zip

@@ -59,6 +59,10 @@ interface CodeWindowDesignerProps {
   onUpdateRunner2BId: (val: string) => void;
   runner3BId: string;
   onUpdateRunner3BId: (val: string) => void;
+
+  // Pitch Speed Calculator / Keypad State
+  pitchSpeedInput?: string;
+  onUpdatePitchSpeedInput?: (val: string) => void;
   
   catcherId: string;
   onUpdateCatcherId: (val: string) => void;
@@ -284,6 +288,9 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
   onUpdateRunner2BId,
   runner3BId,
   onUpdateRunner3BId,
+
+  pitchSpeedInput,
+  onUpdatePitchSpeedInput,
   
   catcherId,
   onUpdateCatcherId,
@@ -567,20 +574,33 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
   const battingTeam = inningHalf === 'top' ? teamAName : teamBName;
   const defendingTeam = inningHalf === 'top' ? teamBName : teamAName;
 
-  // Roster lists for selectors with strict position filtering (野手/打者 vs 投手 vs 二刀流)
-  const battingPlayers = players
-    .filter(p => {
-      if (p.teamName !== battingTeam) return false;
-      const pos = p.positionType || 'batter';
-      return (pos === 'batter' || pos === 'both') && p.battingOrder !== undefined && p.battingOrder >= 1 && p.battingOrder <= 9;
-    })
-    .sort((a, b) => (a.battingOrder || 0) - (b.battingOrder || 0));
+  // Roster lists for selectors (Include all team players, prioritizing sorted battingOrder 1~9)
+  const battingPlayers = useMemo(() => {
+    const teamPlayers = players.filter(p => p.teamName === battingTeam);
+    return teamPlayers.sort((a, b) => {
+      const orderA = a.battingOrder && a.battingOrder >= 1 && a.battingOrder <= 9 ? Number(a.battingOrder) : 99;
+      const orderB = b.battingOrder && b.battingOrder >= 1 && b.battingOrder <= 9 ? Number(b.battingOrder) : 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return Number(a.number || 0) - Number(b.number || 0);
+    });
+  }, [players, battingTeam]);
+
   const pitchingPlayers = players.filter(p => {
     if (p.teamName !== defendingTeam) return false;
     const pos = p.positionType || 'pitcher';
     return pos === 'pitcher' || pos === 'both';
   });
   const defendingPlayers = players.filter(p => p.teamName === defendingTeam);
+
+  // Auto-switch active batter when switching inning half or team if current active player is not on the batting team
+  useEffect(() => {
+    if (battingPlayers.length > 0) {
+      const currentIsOnBattingTeam = battingPlayers.some(p => p.id === activePlayerId);
+      if (!currentIsOnBattingTeam) {
+        onSelectPlayer(battingPlayers[0].id);
+      }
+    }
+  }, [battingTeam, inningHalf, battingPlayers]);
 
   // Resolved active pitcher's name
   const activePitcher = defendingTeam === teamAName ? pitcherA : pitcherB;
@@ -951,8 +971,8 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
   return (
     <div className="flex flex-col md:flex-row gap-3 w-full flex-1 min-w-0">
       
-      {/* LEFT COLUMN: Default Fixed Widgets (Very compact, scroll-free) */}
-      <div className="w-full md:w-[325px] xl:w-[335px] flex flex-col gap-1.5 bg-zinc-900 border border-zinc-800 p-2.5 rounded-xl shadow-xl h-fit text-[10px] shrink-0">
+      {/* LEFT COLUMN: Control Widgets Panel (Code Window - 2/5 Ratio Width) */}
+      <div className="w-full lg:w-2/5 flex flex-col gap-2 bg-zinc-900 border border-zinc-800 p-2.5 rounded-xl shadow-xl h-fit text-[10px] shrink-0">
         
         {/* ROW 1: Count & Inning & Batter with Prev/Next buttons */}
         <div className="grid grid-cols-12 gap-2 items-center">
@@ -1076,6 +1096,8 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Pitch Speed Widget Removed From Top Full Width */}
         </div>
 
         {/* SECTION: DEFENSE (PITCHERS & LINEUP) - Always visible section */}
@@ -1422,354 +1444,412 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
           </div>
         </div>
 
-        {/* ROW 5: Strike Zone Grid & RUNNERS (Center) & Outfield SVG Plotter (Side-by-side) */}
-        <div className="flex gap-2 pt-2 border-t border-zinc-850/50 justify-between items-start">
+        {/* ROW 5: Strike Zone Grid & RUNNERS & Outfield Plotter & Speed Keypad */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-zinc-850/50 select-none">
           
-          {/* Left Side: Strike Zone Grid */}
-          <div className="space-y-1 shrink-0">
-            <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-555 select-none">
-              <span className="uppercase tracking-wider flex items-center gap-0.5">
-                <Compass className="w-2.5 h-2.5 text-sky-400" /> コース位置
-              </span>
-              <button
-                onClick={onTogglePerspective}
-                className="bg-zinc-950 hover:bg-zinc-850 px-1 py-0.2 rounded text-sky-400 font-bold transition-all text-[7.5px]"
-              >
-                {coursePerspective === 'pitcher' ? '投手' : '捕手'}
-              </button>
-            </div>
+          {/* Upper Sub-Row: Course Grid (Fixed shrink-0) & Runner/Quick Controls (flex-1 Expanded) */}
+          <div className="flex items-start gap-2">
             
-            {/* Compact 5x5 Grid */}
-            <div className="flex flex-col gap-0.5 bg-zinc-950/45 p-0.5 rounded-lg border border-zinc-850/80">
-              {[1, 2, 3, 4, 5].map((row) => {
-                const cols = coursePerspective === 'catcher' ? [1, 2, 3, 4, 5] : [5, 4, 3, 2, 1];
-                return (
-                  <div key={row} className="flex gap-0.5">
-                    {cols.map((col) => {
-                      const { label, isStrikeZone } = getCellDetails(row, col);
-                      const isSelected = selectedCourse === label;
-
-                      return (
-                        <div
-                          key={col}
-                          onClick={() => handleCellClick(label)}
-                          className={`w-[18px] h-[18px] flex items-center justify-center text-[6px] font-mono font-bold rounded cursor-pointer transition-all border ${
-                            isSelected
-                              ? 'bg-sky-500 border-sky-350 text-white shadow font-black scale-105'
-                              : isStrikeZone
-                                ? 'bg-red-950/30 border-red-900/20 text-red-400 hover:bg-red-900/40'
-                                : 'bg-blue-950/20 border-blue-900/15 text-blue-355 hover:bg-blue-900/40'
-                          }`}
-                          title={label}
-                        >
-                          {label}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Toast Notification Telop */}
-          {toastMessage && (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/90 border border-emerald-500 text-emerald-200 px-4 py-2 rounded-xl shadow-2xl font-bold text-xs flex items-center gap-2 animate-bounce">
-              <span>{toastMessage}</span>
-            </div>
-          )}
-
-          {/* Center Column: RUNNER SELECTORS & QUICK BUTTONS */}
-          <div className="flex-1 flex flex-col gap-0.5 shrink-0 w-[130px] h-[102px] justify-between">
-            <div className="text-[7.5px] uppercase font-black text-amber-500 select-none text-center">
-              🏃‍♂️ 走者・クイック記録
-            </div>
-            
-            <div className="flex flex-col bg-zinc-950 p-1 rounded-lg border border-zinc-850 h-[88px] justify-between">
-              {/* Horizontal 3-column Runner selectors */}
-              <div className="grid grid-cols-3 gap-1 bg-zinc-900/60 p-1 rounded border border-zinc-800/80">
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-[6.5px] font-black text-zinc-500 text-center leading-none select-none">1塁</span>
-                  <select
-                    value={runner1BId}
-                    /* always enabled */
-                    onChange={(e) => onUpdateRunner1BId(e.target.value)}
-                    className={"bg-zinc-950 border border-zinc-850 text-[8px] rounded px-0.5 focus:outline-none text-zinc-300 w-full h-5 cursor-pointer"}
-                  >
-                    <option value="">-</option>
-                    {battingPlayers.map(p => (
-                      <option key={p.id} value={p.id}>#{p.number || ''} {p.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-[6.5px] font-black text-zinc-500 text-center leading-none select-none">2塁</span>
-                  <select
-                    value={runner2BId}
-                    /* always enabled */
-                    onChange={(e) => onUpdateRunner2BId(e.target.value)}
-                    className={"bg-zinc-950 border border-zinc-850 text-[8px] rounded px-0.5 focus:outline-none text-zinc-300 w-full h-5 cursor-pointer"}
-                  >
-                    <option value="">-</option>
-                    {battingPlayers.map(p => (
-                      <option key={p.id} value={p.id}>#{p.number || ''} {p.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-[6.5px] font-black text-zinc-500 text-center leading-none select-none">3塁</span>
-                  <select
-                    value={runner3BId}
-                    /* always enabled */
-                    onChange={(e) => onUpdateRunner3BId(e.target.value)}
-                    className={"bg-zinc-950 border border-zinc-850 text-[8px] rounded px-0.5 focus:outline-none text-zinc-300 w-full h-5 cursor-pointer"}
-                  >
-                    <option value="">-</option>
-                    {battingPlayers.map(p => (
-                      <option key={p.id} value={p.id}>#{p.number || ''} {p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 1: Hits */}
-              <div className="grid grid-cols-4 gap-0.5 select-none">
-                {[
-                  { defaultName: '単打', defaultGroup: 'Result', defaultColor: 'bg-emerald-950/40 border-emerald-900/50 hover:bg-emerald-900/60 text-emerald-400', key: 'h_1b' },
-                  { defaultName: '二塁打', defaultGroup: 'Result', defaultColor: 'bg-emerald-950/40 border-emerald-900/50 hover:bg-emerald-900/60 text-emerald-400', key: 'h_2b' },
-                  { defaultName: '三塁打', defaultGroup: 'Result', defaultColor: 'bg-emerald-950/40 border-emerald-900/50 hover:bg-emerald-900/60 text-emerald-400', key: 'h_3b' },
-                  { defaultName: '本塁打', defaultGroup: 'Result', defaultColor: 'bg-red-950/40 border-red-900/50 hover:bg-red-900/60 text-red-400 font-bold', key: 'h_hr' }
-                ].map((btn) => {
-                  const custom = quickCustomMap[btn.key];
-                  const displayName = custom?.name || btn.defaultName;
-                  const displayGroup = custom?.group || btn.defaultGroup;
-                  const displayColor = custom?.color || btn.defaultColor;
-                  const displayLinkTrigger = custom?.linkTrigger || 'hit';
-                  const quickId = `quick_${btn.key}`;
-
-                  return (
-                    <div key={btn.key} className="relative group">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isDesignMode) {
-                            setEditingQuickKey(btn.key);
-                            setQuickFormName(displayName);
-                            setQuickFormGroup(displayGroup);
-                            setQuickFormColor(displayColor);
-                            setQuickFormLinkTrigger(displayLinkTrigger);
-                            return;
-                          }
-                          // 1. Fire quick record label
-                          const quickConfig: ButtonConfig = {
-                            id: quickId,
-                            name: displayName,
-                            type: 'label' as ButtonType,
-                            groupName: displayGroup,
-                            color: displayColor,
-                            hotkey: '',
-                            leadIn: 0,
-                            leadOut: 0
-                          };
-                          onTriggerButton(quickConfig);
-
-                          // 2. Activation Link Triggering
-                          if (displayLinkTrigger !== 'none') {
-                            const linkedTargetButtons = buttons.filter(b => {
-                              if (b.linkTrigger === displayLinkTrigger) return true;
-                              const lower = b.name.toLowerCase().trim();
-                              if (displayLinkTrigger === 'hit') return lower === 'hit' || lower === 'ヒット' || lower === '安打';
-                              if (displayLinkTrigger === 'out') return lower === 'out' || lower === 'アウト' || lower === '凡退';
-                              if (displayLinkTrigger === 'score') return lower === 'score' || lower === '得点' || lower === 'ラン';
-                              if (displayLinkTrigger === 'pitch') return lower === 'pitch' || lower === '投球' || b.id === 'btn_pitch';
-                              if (displayLinkTrigger === 'walk') return lower === 'walk' || lower === '四球' || lower === '死球' || lower === '四死球';
-                              return false;
-                            });
-
-                            linkedTargetButtons.forEach(targetBtn => {
-                              setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: true }));
-                              setTimeout(() => {
-                                setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: false }));
-                              }, 180);
-
-                              onTriggerButton(targetBtn);
-                            });
-                          }
-                        }}
-                        className={`w-full border rounded py-0.5 text-[8.5px] leading-tight transition-all active:scale-95 text-center cursor-pointer ${displayColor}`}
-                      >
-                        {displayName}
-                      </button>
-
-                      {/* Design mode edit indicator */}
-                      {isDesignMode && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingQuickKey(btn.key);
-                            setQuickFormName(displayName);
-                            setQuickFormGroup(displayGroup);
-                            setQuickFormColor(displayColor);
-                            setQuickFormLinkTrigger(displayLinkTrigger);
-                          }}
-                          className="absolute -top-1 -right-1 p-0.5 bg-amber-500 text-zinc-950 rounded-full shadow hover:bg-amber-400"
-                          title="デフォボタンの編集 (名前・グループ・連動トリガー)"
-                        >
-                          <Edit2 className="w-2.5 h-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Row 2: Plays */}
-              <div className="grid grid-cols-4 gap-0.5 select-none">
-                {[
-                  { defaultName: '死球', defaultGroup: 'Result', defaultColor: 'bg-amber-950/40 border-amber-900/50 hover:bg-amber-900/60 text-amber-300', key: 'p_hbp' },
-                  { defaultName: '失策', defaultGroup: 'Error', defaultColor: 'bg-rose-955/40 border-rose-900/50 hover:bg-rose-900/60 text-rose-300', key: 'p_err' },
-                  { defaultName: '牽制', defaultGroup: 'Pickoff', defaultColor: 'bg-blue-955/40 border-blue-900/50 hover:bg-blue-900/60 text-blue-300', key: 'p_po' },
-                  { defaultName: '四球', defaultGroup: 'Result', defaultColor: 'bg-zinc-800/40 border-zinc-700/50 hover:bg-zinc-700/60 text-zinc-300', key: 'p_bb' }
-                ].map((btn) => {
-                  const custom = quickCustomMap[btn.key];
-                  const displayName = custom?.name || btn.defaultName;
-                  const displayGroup = custom?.group || btn.defaultGroup;
-                  const displayColor = custom?.color || btn.defaultColor;
-                  const displayLinkTrigger = custom?.linkTrigger || 'none';
-                  const quickId = `quick_${btn.key}`;
-
-                  return (
-                    <div key={btn.key} className="relative group">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isDesignMode) {
-                            setEditingQuickKey(btn.key);
-                            setQuickFormName(displayName);
-                            setQuickFormGroup(displayGroup);
-                            setQuickFormColor(displayColor);
-                            setQuickFormLinkTrigger(displayLinkTrigger);
-                            return;
-                          }
-
-                          onTriggerButton({
-                            id: quickId,
-                            name: displayName,
-                            type: 'label' as ButtonType,
-                            groupName: displayGroup,
-                            color: displayColor,
-                            hotkey: '',
-                            leadIn: 0,
-                            leadOut: 0
-                          });
-
-                          // Activation Link Firing if configured
-                          if (displayLinkTrigger !== 'none') {
-                            const linkedTargetButtons = buttons.filter(b => {
-                              if (b.linkTrigger === displayLinkTrigger) return true;
-                              const lower = b.name.toLowerCase().trim();
-                              if (displayLinkTrigger === 'hit') return lower === 'hit' || lower === 'ヒット' || lower === '安打';
-                              if (displayLinkTrigger === 'out') return lower === 'out' || lower === 'アウト' || lower === '凡退';
-                              if (displayLinkTrigger === 'score') return lower === 'score' || lower === '得点' || lower === 'ラン';
-                              if (displayLinkTrigger === 'pitch') return lower === 'pitch' || lower === '投球' || b.id === 'btn_pitch';
-                              if (displayLinkTrigger === 'walk') return lower === 'walk' || lower === '四球' || lower === '死球' || lower === '四死球';
-                              return false;
-                            });
-
-                            linkedTargetButtons.forEach(targetBtn => {
-                              setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: true }));
-                              setTimeout(() => {
-                                setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: false }));
-                              }, 180);
-
-                              onTriggerButton(targetBtn);
-                            });
-                          }
-                        }}
-                        className={`w-full border rounded py-0.5 text-[8.5px] leading-tight transition-all active:scale-95 text-center cursor-pointer ${displayColor}`}
-                      >
-                        {displayName}
-                      </button>
-
-                      {/* Design mode edit indicator */}
-                      {isDesignMode && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingQuickKey(btn.key);
-                            setQuickFormName(displayName);
-                            setQuickFormGroup(displayGroup);
-                            setQuickFormColor(displayColor);
-                            setQuickFormLinkTrigger(displayLinkTrigger);
-                          }}
-                          className="absolute -top-1 -right-1 p-0.5 bg-amber-500 text-zinc-950 rounded-full shadow hover:bg-amber-400"
-                          title="デフォボタンの編集 (名前・グループ・連動トリガー)"
-                        >
-                          <Edit2 className="w-2.5 h-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Side: Baseball Outfield SVG */}
-          <div className="flex flex-col gap-0.5 shrink-0 w-[98px] h-[102px] justify-between">
-            <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-400 select-none">
-              <span>打球方向 (球場)</span>
-              {plottedHit && (
-                <button onClick={() => onUpdatePlottedHit(null)} className="text-red-400 hover:underline">
-                  クリア
+            {/* Left Side: Strike Zone Grid (Compact shrink-0 width) */}
+            <div className="space-y-1 shrink-0">
+              <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-400 select-none px-0.5">
+                <span className="uppercase tracking-wider flex items-center gap-0.5">
+                  <Compass className="w-2.5 h-2.5 text-sky-400" /> コース位置
+                </span>
+                <button
+                  onClick={onTogglePerspective}
+                  className="bg-zinc-950 hover:bg-zinc-850 px-1 py-0.2 rounded text-sky-400 font-bold transition-all text-[7.5px] border border-zinc-800"
+                >
+                  {coursePerspective === 'pitcher' ? '投手' : '捕手'}
                 </button>
-              )}
+              </div>
+              
+              {/* Compact 5x5 Grid */}
+              <div className="flex flex-col gap-0.5 bg-zinc-950 p-1 rounded-lg border border-zinc-850">
+                {[1, 2, 3, 4, 5].map((row) => {
+                  const cols = coursePerspective === 'catcher' ? [1, 2, 3, 4, 5] : [5, 4, 3, 2, 1];
+                  return (
+                    <div key={row} className="flex gap-0.5 justify-center">
+                      {cols.map((col) => {
+                        const { label, isStrikeZone } = getCellDetails(row, col);
+                        const isSelected = selectedCourse === label;
+
+                        return (
+                          <div
+                            key={col}
+                            onClick={() => handleCellClick(label)}
+                            className={`w-[20px] h-[20px] flex items-center justify-center text-[7px] font-mono font-bold rounded cursor-pointer transition-all border ${
+                              isSelected
+                                ? 'bg-sky-500 border-sky-350 text-white shadow font-black scale-105'
+                                : isStrikeZone
+                                  ? 'bg-red-950/40 border-red-900/40 text-red-300 hover:bg-red-900/60'
+                                  : 'bg-blue-950/30 border-blue-900/30 text-blue-300 hover:bg-blue-900/50'
+                            }`}
+                            title={label}
+                          >
+                            {label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="w-full aspect-square relative select-none bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden h-[88px]">
-              <svg 
-                onClick={handleFieldClick}
-                className="w-full h-full cursor-crosshair"
-                viewBox="5 26 90 62"
-              >
-                {/* Outfield Grass Sector (Center-balanced 90 deg baseball field) */}
-                <path d="M 50 84 L 8 42 A 52 52 0 0 1 92 42 L 50 84 Z" fill="#047857" fillOpacity="0.28" stroke="#10b981" strokeWidth="1.2" />
-                
-                {/* Infield Dirt Area (Circle Mound & Baselines) */}
-                <path d="M 50 84 L 66 68 L 50 52 L 34 68 Z" fill="#b45309" fillOpacity="0.28" stroke="#f59e0b" strokeWidth="0.9" strokeDasharray="1.5 1.5" />
-                <circle cx="50" cy="68" r="9" fill="#b45309" fillOpacity="0.2" />
 
-                {/* Fair Line Foul Poles (Yellow Poles) */}
-                <line x1="8" y1="42" x2="8" y2="34" stroke="#facc15" strokeWidth="2" strokeLinecap="round" />
-                <line x1="92" y1="42" x2="92" y2="34" stroke="#facc15" strokeWidth="2" strokeLinecap="round" />
+            {/* Toast Notification Telop */}
+            {toastMessage && (
+              <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/90 border border-emerald-500 text-emerald-200 px-4 py-2 rounded-xl shadow-2xl font-bold text-xs flex items-center gap-2 animate-bounce">
+                <span>{toastMessage}</span>
+              </div>
+            )}
 
-                {/* Base Bags */}
-                <rect x="64.5" y="66.5" width="3" height="3" fill={runner1BId ? "#f43f5e" : "#fff"} transform="rotate(45 66 68)" className={runner1BId ? "animate-pulse" : ""} />
-                <rect x="48.5" y="50.5" width="3" height="3" fill={runner2BId ? "#f43f5e" : "#fff"} transform="rotate(45 50 52)" className={runner2BId ? "animate-pulse" : ""} />
-                <rect x="32.5" y="66.5" width="3" height="3" fill={runner3BId ? "#f43f5e" : "#fff"} transform="rotate(45 34 68)" className={runner3BId ? "animate-pulse" : ""} />
-                <path d="M 48.5 82.5 L 51.5 82.5 L 50 84 Z" fill="#fff" />
-                
-                {/* Pitcher Mound Rubber */}
-                <circle cx="50" cy="68" r="1.5" fill="#e4e4e7" />
+            {/* Center-Right Column: RUNNER SELECTORS & QUICK BUTTONS (Expanded Flex-1) */}
+            <div className="flex-1 flex flex-col gap-1 min-w-0 h-auto justify-between">
+              <div className="text-[7.5px] uppercase font-black text-amber-500 select-none text-center">
+                🏃‍♂️ 走者・クイック記録
+              </div>
+              
+              <div className="flex flex-col bg-zinc-950 p-1.5 rounded-lg border border-zinc-850 h-full min-h-[96px] justify-between gap-1">
+                {/* Horizontal 3-column Runner selectors */}
+                <div className="grid grid-cols-3 gap-1 bg-zinc-900/60 p-1 rounded border border-zinc-800/80">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[6.5px] font-black text-zinc-500 text-center leading-none select-none">1塁</span>
+                    <select
+                      value={runner1BId}
+                      onChange={(e) => onUpdateRunner1BId(e.target.value)}
+                      className={"bg-zinc-950 border border-zinc-850 text-[8px] rounded px-0.5 focus:outline-none text-zinc-300 w-full h-5 cursor-pointer"}
+                    >
+                      <option value="">-</option>
+                      {battingPlayers.map(p => (
+                        <option key={p.id} value={p.id}>#{p.number || ''} {p.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Trajectory Line from Home (50, 84) */}
-                {plottedHit && (
-                  <>
-                    <line x1="50" y1="84" x2={plottedHit.x} y2={plottedHit.y} stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="2 2" />
-                    <circle cx={plottedHit.x} cy={plottedHit.y} r="2.8" fill="#f43f5e" stroke="#fff" strokeWidth="0.8" className="animate-pulse" />
-                  </>
-                )}
-              </svg>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[6.5px] font-black text-zinc-500 text-center leading-none select-none">2塁</span>
+                    <select
+                      value={runner2BId}
+                      onChange={(e) => onUpdateRunner2BId(e.target.value)}
+                      className={"bg-zinc-950 border border-zinc-850 text-[8px] rounded px-0.5 focus:outline-none text-zinc-300 w-full h-5 cursor-pointer"}
+                    >
+                      <option value="">-</option>
+                      {battingPlayers.map(p => (
+                        <option key={p.id} value={p.id}>#{p.number || ''} {p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[6.5px] font-black text-zinc-500 text-center leading-none select-none">3塁</span>
+                    <select
+                      value={runner3BId}
+                      onChange={(e) => onUpdateRunner3BId(e.target.value)}
+                      className={"bg-zinc-950 border border-zinc-850 text-[8px] rounded px-0.5 focus:outline-none text-zinc-300 w-full h-5 cursor-pointer"}
+                    >
+                      <option value="">-</option>
+                      {battingPlayers.map(p => (
+                        <option key={p.id} value={p.id}>#{p.number || ''} {p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 1: Hits */}
+                <div className="grid grid-cols-4 gap-1 select-none">
+                  {[
+                    { defaultName: '単打', defaultGroup: 'Result', defaultColor: 'bg-emerald-950/40 border-emerald-900/50 hover:bg-emerald-900/60 text-emerald-400', key: 'h_1b' },
+                    { defaultName: '二塁打', defaultGroup: 'Result', defaultColor: 'bg-emerald-950/40 border-emerald-900/50 hover:bg-emerald-900/60 text-emerald-400', key: 'h_2b' },
+                    { defaultName: '三塁打', defaultGroup: 'Result', defaultColor: 'bg-emerald-950/40 border-emerald-900/50 hover:bg-emerald-900/60 text-emerald-400', key: 'h_3b' },
+                    { defaultName: '本塁打', defaultGroup: 'Result', defaultColor: 'bg-red-950/40 border-red-900/50 hover:bg-red-900/60 text-red-400 font-bold', key: 'h_hr' }
+                  ].map((btn) => {
+                    const custom = quickCustomMap[btn.key];
+                    const displayName = custom?.name || btn.defaultName;
+                    const displayGroup = custom?.group || btn.defaultGroup;
+                    const displayColor = custom?.color || btn.defaultColor;
+                    const displayLinkTrigger = custom?.linkTrigger || 'hit';
+                    const quickId = `quick_${btn.key}`;
+
+                    return (
+                      <div key={btn.key} className="relative group">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isDesignMode) {
+                              setEditingQuickKey(btn.key);
+                              setQuickFormName(displayName);
+                              setQuickFormGroup(displayGroup);
+                              setQuickFormColor(displayColor);
+                              setQuickFormLinkTrigger(displayLinkTrigger);
+                              return;
+                            }
+                            const quickConfig: ButtonConfig = {
+                              id: quickId,
+                              name: displayName,
+                              type: 'label' as ButtonType,
+                              groupName: displayGroup,
+                              color: displayColor,
+                              hotkey: '',
+                              leadIn: 0,
+                              leadOut: 0
+                            };
+                            onTriggerButton(quickConfig);
+
+                            if (displayLinkTrigger !== 'none') {
+                              const linkedTargetButtons = buttons.filter(b => {
+                                if (b.linkTrigger === displayLinkTrigger) return true;
+                                const lower = b.name.toLowerCase().trim();
+                                if (displayLinkTrigger === 'hit') return lower === 'hit' || lower === 'ヒット' || lower === '安打';
+                                if (displayLinkTrigger === 'out') return lower === 'out' || lower === 'アウト' || lower === '凡退';
+                                if (displayLinkTrigger === 'score') return lower === 'score' || lower === '得点' || lower === 'ラン';
+                                if (displayLinkTrigger === 'pitch') return lower === 'pitch' || lower === '投球' || b.id === 'btn_pitch';
+                                if (displayLinkTrigger === 'walk') return lower === 'walk' || lower === '四球' || lower === '死球' || lower === '四死球';
+                                return false;
+                              });
+
+                              linkedTargetButtons.forEach(targetBtn => {
+                                setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: true }));
+                                setTimeout(() => {
+                                  setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: false }));
+                                }, 180);
+
+                                onTriggerButton(targetBtn);
+                              });
+                            }
+                          }}
+                          className={`w-full border rounded py-1 text-[9px] font-bold leading-tight transition-all active:scale-95 text-center cursor-pointer ${displayColor}`}
+                        >
+                          {displayName}
+                        </button>
+
+                        {isDesignMode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingQuickKey(btn.key);
+                              setQuickFormName(displayName);
+                              setQuickFormGroup(displayGroup);
+                              setQuickFormColor(displayColor);
+                              setQuickFormLinkTrigger(displayLinkTrigger);
+                            }}
+                            className="absolute -top-1 -right-1 p-0.5 bg-amber-500 text-zinc-950 rounded-full shadow hover:bg-amber-400"
+                            title="デフォボタンの編集 (名前・グループ・連動トリガー)"
+                          >
+                            <Edit2 className="w-2.5 h-2.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Row 2: Plays */}
+                <div className="grid grid-cols-4 gap-1 select-none">
+                  {[
+                    { defaultName: '死球', defaultGroup: 'Result', defaultColor: 'bg-amber-950/40 border-amber-900/50 hover:bg-amber-900/60 text-amber-300', key: 'p_hbp' },
+                    { defaultName: '失策', defaultGroup: 'Error', defaultColor: 'bg-rose-955/40 border-rose-900/50 hover:bg-rose-900/60 text-rose-300', key: 'p_err' },
+                    { defaultName: '牽制', defaultGroup: 'Pickoff', defaultColor: 'bg-blue-955/40 border-blue-900/50 hover:bg-blue-900/60 text-blue-300', key: 'p_po' },
+                    { defaultName: '四球', defaultGroup: 'Result', defaultColor: 'bg-zinc-800/40 border-zinc-700/50 hover:bg-zinc-700/60 text-zinc-300', key: 'p_bb' }
+                  ].map((btn) => {
+                    const custom = quickCustomMap[btn.key];
+                    const displayName = custom?.name || btn.defaultName;
+                    const displayGroup = custom?.group || btn.defaultGroup;
+                    const displayColor = custom?.color || btn.defaultColor;
+                    const displayLinkTrigger = custom?.linkTrigger || 'none';
+                    const quickId = `quick_${btn.key}`;
+
+                    return (
+                      <div key={btn.key} className="relative group">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isDesignMode) {
+                              setEditingQuickKey(btn.key);
+                              setQuickFormName(displayName);
+                              setQuickFormGroup(displayGroup);
+                              setQuickFormColor(displayColor);
+                              setQuickFormLinkTrigger(displayLinkTrigger);
+                              return;
+                            }
+
+                            onTriggerButton({
+                              id: quickId,
+                              name: displayName,
+                              type: 'label' as ButtonType,
+                              groupName: displayGroup,
+                              color: displayColor,
+                              hotkey: '',
+                              leadIn: 0,
+                              leadOut: 0
+                            });
+
+                            if (displayLinkTrigger !== 'none') {
+                              const linkedTargetButtons = buttons.filter(b => {
+                                if (b.linkTrigger === displayLinkTrigger) return true;
+                                const lower = b.name.toLowerCase().trim();
+                                if (displayLinkTrigger === 'hit') return lower === 'hit' || lower === 'ヒット' || lower === '安打';
+                                if (displayLinkTrigger === 'out') return lower === 'out' || lower === 'アウト' || lower === '凡退';
+                                if (displayLinkTrigger === 'score') return lower === 'score' || lower === '得点' || lower === 'ラン';
+                                if (displayLinkTrigger === 'pitch') return lower === 'pitch' || lower === '投球' || b.id === 'btn_pitch';
+                                if (displayLinkTrigger === 'walk') return lower === 'walk' || lower === '四球' || lower === '死球' || lower === '四死球';
+                                return false;
+                              });
+
+                              linkedTargetButtons.forEach(targetBtn => {
+                                setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: true }));
+                                setTimeout(() => {
+                                  setFlashingButtons(prev => ({ ...prev, [targetBtn.id]: false }));
+                                }, 180);
+
+                                onTriggerButton(targetBtn);
+                              });
+                            }
+                          }}
+                          className={`w-full border rounded py-1 text-[9px] font-bold leading-tight transition-all active:scale-95 text-center cursor-pointer ${displayColor}`}
+                        >
+                          {displayName}
+                        </button>
+
+                        {isDesignMode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingQuickKey(btn.key);
+                              setQuickFormName(displayName);
+                              setQuickFormGroup(displayGroup);
+                              setQuickFormColor(displayColor);
+                              setQuickFormLinkTrigger(displayLinkTrigger);
+                            }}
+                            className="absolute -top-1 -right-1 p-0.5 bg-amber-500 text-zinc-950 rounded-full shadow hover:bg-amber-400"
+                            title="デフォボタンの編集 (名前・グループ・連動トリガー)"
+                          >
+                            <Edit2 className="w-2.5 h-2.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+
           </div>
 
-        </div>
+          {/* Lower Sub-Row: Baseball Field Outfield SVG (shrink-0 aligned with Course) & Speed Keypad (flex-1 aligned with Runner) */}
+          <div className="flex items-start gap-2">
+            
+            {/* Side: Baseball Outfield SVG (Compact shrink-0 width aligned with Course above) */}
+            <div className="flex flex-col gap-0.5 shrink-0 space-y-1">
+              <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-400 select-none px-0.5">
+                <span>打球方向 (球場)</span>
+                {plottedHit && (
+                  <button onClick={() => onUpdatePlottedHit(null)} className="text-red-400 hover:underline">
+                    クリア
+                  </button>
+                )}
+              </div>
+              <div className="w-[124px] h-[124px] relative select-none bg-zinc-950 rounded-lg border border-zinc-850 overflow-hidden shadow-inner flex items-center justify-center">
+                <svg 
+                  onClick={handleFieldClick}
+                  className="w-full h-full cursor-crosshair p-0.5"
+                  viewBox="2 20 96 68"
+                >
+                  {/* Outfield Grass Sector */}
+                  <path d="M 50 84 L 8 42 A 52 52 0 0 1 92 42 L 50 84 Z" fill="#047857" fillOpacity="0.3" stroke="#10b981" strokeWidth="1.2" />
+                  
+                  {/* Infield Dirt Area */}
+                  <path d="M 50 84 L 66 68 L 50 52 L 34 68 Z" fill="#b45309" fillOpacity="0.3" stroke="#f59e0b" strokeWidth="0.9" strokeDasharray="1.5 1.5" />
+                  <circle cx="50" cy="68" r="9" fill="#b45309" fillOpacity="0.2" />
+
+                  {/* Fair Line Foul Poles */}
+                  <line x1="8" y1="42" x2="8" y2="34" stroke="#facc15" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="92" y1="42" x2="92" y2="34" stroke="#facc15" strokeWidth="2" strokeLinecap="round" />
+
+                  {/* Base Bags */}
+                  <rect x="64.5" y="66.5" width="3" height="3" fill={runner1BId ? "#f43f5e" : "#fff"} transform="rotate(45 66 68)" className={runner1BId ? "animate-pulse" : ""} />
+                  <rect x="48.5" y="50.5" width="3" height="3" fill={runner2BId ? "#f43f5e" : "#fff"} transform="rotate(45 50 52)" className={runner2BId ? "animate-pulse" : ""} />
+                  <rect x="32.5" y="66.5" width="3" height="3" fill={runner3BId ? "#f43f5e" : "#fff"} transform="rotate(45 34 68)" className={runner3BId ? "animate-pulse" : ""} />
+                  <path d="M 48.5 82.5 L 51.5 82.5 L 50 84 Z" fill="#fff" />
+                  
+                  {/* Pitcher Mound Rubber */}
+                  <circle cx="50" cy="68" r="1.5" fill="#e4e4e7" />
+
+                  {/* Trajectory Line from Home (50, 84) */}
+                  {plottedHit && (
+                    <>
+                      <line x1="50" y1="84" x2={plottedHit.x} y2={plottedHit.y} stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="2 2" />
+                      <circle cx={plottedHit.x} cy={plottedHit.y} r="2.8" fill="#f43f5e" stroke="#fff" strokeWidth="0.8" className="animate-pulse" />
+                    </>
+                  )}
+                </svg>
+              </div>
+            </div>
+
+            {/* Far Right Side: Pitch Speed Mini Calculator Keypad (Expanded flex-1 aligned with Runner) */}
+            <div className="flex-1 flex flex-col gap-1 min-w-0 h-[140px] justify-between bg-zinc-950/80 border border-amber-900/40 p-2 rounded-xl shadow select-none">
+              <div className="flex justify-between items-center text-[7.5px] font-black text-amber-400 select-none">
+                <span className="truncate">⚡ 球速(km/h)</span>
+                <div className="flex items-center gap-0.5">
+                  <span className="font-mono text-[9.5px] text-amber-300 bg-black/80 border border-amber-800/80 px-1.5 py-0.5 rounded font-bold">
+                    {pitchSpeedInput ? `${pitchSpeedInput}` : '___'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = pitchSpeedInput || '';
+                      onUpdatePitchSpeedInput?.(current.slice(0, -1));
+                    }}
+                    className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-[8px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold"
+                    title="消去"
+                  >
+                    ⌫ 消去
+                  </button>
+                </div>
+              </div>
+
+              {/* Mini 3x4 Grid (直感的な電卓配列 3列) */}
+              <div className="grid grid-cols-3 gap-1 text-[9.5px] font-extrabold flex-1 pt-1">
+                {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.'].map((keyVal) => (
+                  <button
+                    key={keyVal}
+                    type="button"
+                    onClick={() => {
+                      const current = pitchSpeedInput || '';
+                      if (keyVal === '.' && current.includes('.')) return;
+                      if (current.length < 5) {
+                        onUpdatePitchSpeedInput?.(current + keyVal);
+                      }
+                    }}
+                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-100 cursor-pointer active:scale-95 text-center flex items-center justify-center font-mono font-bold h-7"
+                  >
+                    {keyVal}
+                  </button>
+                ))}
+
+                {/* 右下: 決定ボタン */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pitchSpeedInput) {
+                      onUpdatePitchSpeedInput?.(pitchSpeedInput);
+                    }
+                  }}
+                  className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded text-white font-black text-[8.5px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-7"
+                >
+                  ✔ 決定
+                </button>
+              </div>
+            </div>
+
+          </div>
 
       </div>
 
-      {/* RIGHT COLUMN: Button Board Canvas */}
-      <div className="flex-1 flex flex-col bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl shadow-xl">
+      </div>
+
+      {/* RIGHT COLUMN: Button Board Canvas (3/5 Ratio Width) */}
+      <div className="w-full lg:flex-1 flex flex-col bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl shadow-xl min-w-0">
         
         {/* Canvas Header & Design mode triggers */}
         <div className="flex justify-between items-center border-b border-zinc-800 pb-2 flex-wrap gap-2">
@@ -2335,7 +2415,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
             )}
 
             {/* Hotkey Character, Button Color, Font Color Palette & Font Size */}
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] uppercase font-bold text-zinc-400">ホットキー</label>
                 <input

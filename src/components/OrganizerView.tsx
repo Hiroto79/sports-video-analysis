@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { TaggedEvent } from '../types';
 import { 
-  Trash2, Edit2, Table, Film, CheckSquare, Square, ChevronRight, Play
+  Trash2, Edit2, Table, Film, CheckSquare, Square, ChevronRight, Play, ArrowUpDown
 } from 'lucide-react';
 
 interface OrganizerViewProps {
@@ -16,8 +16,10 @@ interface OrganizerViewProps {
   onUpdateSelectedIds: (ids: Set<string>) => void;
   exportProgress: string | null;
   activePreviewClip: TaggedEvent | null;
+  nowPlayingClipId?: string | null;
   onPreviewClip: (clip: TaggedEvent) => void;
   onClearPreviewClip: () => void;
+  onSetTimePoint?: (eventId: string, type: 'start' | 'end') => void;
 }
 
 export const OrganizerView: React.FC<OrganizerViewProps> = ({
@@ -31,10 +33,24 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
   onUpdateSelectedIds,
   exportProgress,
   activePreviewClip,
+  nowPlayingClipId,
   onPreviewClip,
-  onClearPreviewClip
+  onClearPreviewClip,
+  onSetTimePoint
 }) => {
   const [editingCell, setEditingCell] = useState<{ id: string; group: string } | null>(null);
+
+  // Auto-scroll playing clip ref tracker
+  const clipRefs = useRef<{ [key: string]: HTMLElement | null }>({});
+
+  useEffect(() => {
+    if (nowPlayingClipId && clipRefs.current[nowPlayingClipId]) {
+      clipRefs.current[nowPlayingClipId]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [nowPlayingClipId]);
 
   // Drag selection tracking states
   const isDraggingRef = useRef(false);
@@ -81,9 +97,29 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
     }
   }, [activeGroupNames, columnOrder]);
 
+  const [sortBy, setSortBy] = useState<'time' | 'pitcher' | 'pitchType' | 'result'>('time');
+
   const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => a.startTime - b.startTime);
-  }, [events]);
+    return [...events].sort((a, b) => {
+      if (sortBy === 'pitcher') {
+        const pA = (a.labels.Pitcher || a.labels['投手名'] || a.actionName || '').toString();
+        const pB = (b.labels.Pitcher || b.labels['投手名'] || b.actionName || '').toString();
+        const cmp = pA.localeCompare(pB, 'ja');
+        if (cmp !== 0) return cmp;
+      } else if (sortBy === 'pitchType') {
+        const tA = (a.labels['Pitch Type'] || a.labels['球種'] || '').toString();
+        const tB = (b.labels['Pitch Type'] || b.labels['球種'] || '').toString();
+        const cmp = tA.localeCompare(tB, 'ja');
+        if (cmp !== 0) return cmp;
+      } else if (sortBy === 'result') {
+        const rA = (a.labels['Result'] || a.labels['結果'] || '').toString();
+        const rB = (b.labels['Result'] || b.labels['結果'] || '').toString();
+        const cmp = rA.localeCompare(rB, 'ja');
+        if (cmp !== 0) return cmp;
+      }
+      return a.startTime - b.startTime;
+    });
+  }, [events, sortBy]);
 
   // Handle Event label modifications directly in cells
   const handleUpdateLabelVal = (eventId: string, groupKey: string, newVal: string) => {
@@ -313,6 +349,54 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
           </button>
         </div>
 
+        {/* ONE-TAP SORT TOGGLES */}
+        <div className="hidden md:flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-[10px]">
+          <span className="text-zinc-500 font-bold px-1.5 flex items-center gap-1 select-none">
+            <ArrowUpDown className="w-3 h-3 text-emerald-400" />
+            並び替え:
+          </span>
+          <button
+            onClick={() => setSortBy('time')}
+            className={`px-2 py-0.5 rounded font-extrabold cursor-pointer transition-all ${
+              sortBy === 'time'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+            }`}
+          >
+            ⏱️ 時間順
+          </button>
+          <button
+            onClick={() => setSortBy('pitcher')}
+            className={`px-2 py-0.5 rounded font-extrabold cursor-pointer transition-all ${
+              sortBy === 'pitcher'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+            }`}
+          >
+            🧢 投手別
+          </button>
+          <button
+            onClick={() => setSortBy('pitchType')}
+            className={`px-2 py-0.5 rounded font-extrabold cursor-pointer transition-all ${
+              sortBy === 'pitchType'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+            }`}
+          >
+            ⚾ 球種別
+          </button>
+          <button
+            onClick={() => setSortBy('result')}
+            className={`px-2 py-0.5 rounded font-extrabold cursor-pointer transition-all ${
+              sortBy === 'result'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+            }`}
+          >
+            🎯 結果別
+          </button>
+        </div>
+
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-zinc-555 font-mono">
             選択: {selectedIds.size} / {events.length} 件
@@ -401,10 +485,12 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
 
                     const isRowDragging = draggedRowIdx === idx;
                     const isRowOver = dragOverRowIdx === idx;
+                    const isNowPlaying = nowPlayingClipId === ev.id;
 
                     return (
                       <tr 
                         key={ev.id} 
+                        ref={(el) => { clipRefs.current[ev.id] = el; }}
                         draggable
                         onDragStart={(e) => handleRowDragStart(e, idx)}
                         onDragOver={(e) => handleRowDragOver(e, idx)}
@@ -412,8 +498,10 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                         onDragEnd={handleRowDragEnd}
                         onMouseDown={(e) => handleRowMouseDown(ev.id, e)}
                         onMouseEnter={() => handleRowMouseEnter(ev.id)}
-                        className={`group hover:bg-zinc-850/30 transition-colors cursor-row-resize ${
-                          isSelected 
+                        className={`group hover:bg-zinc-850/30 transition-all cursor-row-resize ${
+                          isNowPlaying
+                            ? 'bg-emerald-900/40 ring-1 ring-emerald-400 text-emerald-200'
+                            : isSelected 
                             ? 'bg-emerald-950/20 hover:bg-emerald-950/30' 
                             : isDragActive 
                             ? 'bg-zinc-800/40'
@@ -537,6 +625,7 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                   .filter(ev => selectedIds.has(ev.id))
                   .map((ev, idx) => {
                     const isActivePreview = activePreviewClip?.id === ev.id;
+                    const isNowPlaying = nowPlayingClipId === ev.id;
                     const pName = ev.labels.Pitcher || ev.labels['投手名'] || ev.actionName;
                     const hitRes = ev.labels['Result'] || '-';
                     const pType = ev.labels['Pitch Type'] || '-';
@@ -544,9 +633,12 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                     return (
                       <div 
                         key={ev.id}
+                        ref={(el) => { clipRefs.current[ev.id] = el; }}
                         onDoubleClick={() => onPreviewClip(ev)}
                         className={`bg-zinc-900 border p-4.5 rounded-2xl flex flex-col justify-between gap-4 transition-all duration-300 shadow hover:shadow-xl select-none relative ${
-                          isActivePreview 
+                          isNowPlaying
+                            ? 'border-emerald-400 bg-emerald-950/30 ring-2 ring-emerald-400 shadow-emerald-950/50 scale-[1.01]'
+                            : isActivePreview 
                             ? 'border-emerald-500 bg-emerald-950/10 ring-2 ring-emerald-500/20' 
                             : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900'
                         }`}
@@ -624,7 +716,13 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                               >
                                 -
                               </button>
-                              <span className="text-[8.5px] font-bold text-zinc-400">IN</span>
+                              <button 
+                                onClick={() => onSetTimePoint?.(ev.id, 'start')}
+                                className="text-[8.5px] font-bold text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer"
+                                title="現在再生中の位置をIN（開始時間）にセット"
+                              >
+                                📍IN位置
+                              </button>
                               <button 
                                 onClick={() => handleTrimClip(ev.id, 'start', 0.1)}
                                 className="px-1 text-[10px] font-extrabold hover:text-white text-zinc-455 active:scale-90"
@@ -640,7 +738,13 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                               >
                                 -
                               </button>
-                              <span className="text-[8.5px] font-bold text-zinc-400">OUT</span>
+                              <button 
+                                onClick={() => onSetTimePoint?.(ev.id, 'end')}
+                                className="text-[8.5px] font-bold text-amber-400 hover:text-amber-300 hover:underline cursor-pointer"
+                                title="現在再生中の位置をOUT（終了時間）にセット"
+                              >
+                                📍OUT位置
+                              </button>
                               <button 
                                 onClick={() => handleTrimClip(ev.id, 'end', 0.1)}
                                 className="px-1 text-[10px] font-extrabold hover:text-white text-zinc-455 active:scale-90"

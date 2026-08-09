@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { Player, ButtonConfig, TaggedEvent, CustomPreset } from './types';
 import { VideoPlayer } from './components/VideoPlayer';
 import type { VideoPlayerRef } from './components/VideoPlayer';
@@ -9,59 +9,745 @@ import { OrganizerView } from './components/OrganizerView';
 import { MatrixView } from './components/MatrixView';
 import { MatrixPlayerModal } from './components/MatrixPlayerModal';
 import { supabase } from './lib/supabase';
-import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users } from 'lucide-react';
+import { EventTimeline } from './components/EventTimeline';
+import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users, Eye, EyeOff } from 'lucide-react';
 
 // Default initial roster
 const INITIAL_PLAYERS: Player[] = [];
 
 // Simplified Baseball template with absolute coordinates positioned in a 7-column grid
 const BASEBALL_TEMPLATE: ButtonConfig[] = [
-  // Column 0: Main Action
-  { id: 'btn_pitch', name: 'Pitch (投球)', type: 'code', hotkey: '', color: 'bg-emerald-600 border-emerald-500 hover:bg-emerald-500 text-white font-extrabold shadow-emerald-950/40', leadIn: 4, leadOut: 2, x: 10, y: 10, w: 110, h: 80 },
-
-  // Column 1: Pitch Types A
-  { id: 'btn_4seam', name: '4シーム', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 130, y: 10, w: 110, h: 36 },
-  { id: 'btn_2seam', name: '2シーム', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 130, y: 52, w: 110, h: 36 },
-  { id: 'btn_cutter', name: 'カットボール', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 130, y: 94, w: 110, h: 36 },
-  { id: 'btn_slider', name: 'スライダー', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 130, y: 136, w: 110, h: 36 },
-  { id: 'btn_sweeper', name: 'スイーパー', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 130, y: 178, w: 110, h: 36 },
-  { id: 'btn_slurve', name: 'スラーブ', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 130, y: 220, w: 110, h: 36 },
-
-  // Column 2: Pitch Types B
-  { id: 'btn_curve', name: 'カーブ', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 246, y: 10, w: 110, h: 36 },
-  { id: 'btn_kncurve', name: 'ナックルカーブ', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 246, y: 52, w: 110, h: 36 },
-  { id: 'btn_changeup', name: 'チェンジアップ', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 246, y: 94, w: 110, h: 36 },
-  { id: 'btn_splitter', name: 'スプリット', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 246, y: 136, w: 110, h: 36 },
-  { id: 'btn_fork', name: 'フォーク', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 246, y: 178, w: 110, h: 36 },
-  { id: 'btn_knuckle', name: 'ナックル', type: 'label', hotkey: '', color: 'bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Pitch Type', x: 246, y: 220, w: 110, h: 36 },
-
-  // Column 3: Pitch Results
-  { id: 'btn_calledstrike', name: '見逃しストライク', type: 'label', hotkey: '', color: 'bg-rose-950/70 border-rose-900/50 hover:bg-rose-900/60 text-rose-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Result', x: 362, y: 10, w: 110, h: 36 },
-  { id: 'btn_swingingstrike', name: '空振りストライク', type: 'label', hotkey: '', color: 'bg-rose-950/70 border-rose-900/50 hover:bg-rose-900/60 text-rose-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Result', x: 362, y: 52, w: 110, h: 36 },
-  { id: 'btn_foul', name: 'ファール', type: 'label', hotkey: '', color: 'bg-rose-950/70 border-rose-900/50 hover:bg-rose-900/60 text-rose-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Result', x: 362, y: 94, w: 110, h: 36 },
-  { id: 'btn_ball', name: 'ボール', type: 'label', hotkey: '', color: 'bg-blue-950/70 border-blue-900/50 hover:bg-blue-900/60 text-blue-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Result', x: 362, y: 136, w: 110, h: 36 },
-
-  // Column 4: Batted Ball Type & Outcomes
-  { id: 'btn_grounder', name: 'ゴロ', type: 'label', hotkey: '', color: 'bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Batted Ball', x: 478, y: 10, w: 110, h: 36 },
-  { id: 'btn_liner', name: 'ライナー', type: 'label', hotkey: '', color: 'bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Batted Ball', x: 478, y: 52, w: 110, h: 36 },
-  { id: 'btn_flyball', name: 'フライ', type: 'label', hotkey: '', color: 'bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Batted Ball', x: 478, y: 94, w: 110, h: 36 },
-  { id: 'btn_popfly', name: '小フライ', type: 'label', hotkey: '', color: 'bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Batted Ball', x: 478, y: 136, w: 110, h: 36 },
-
-  // Column 5: Steals & Tactics
-  { id: 'btn_steal_success', name: '盗塁成功', type: 'label', hotkey: '', color: 'bg-sky-950/40 border-sky-800/60 hover:bg-sky-800/40 text-sky-400 font-bold', leadIn: 0, leadOut: 0, groupName: 'Play', x: 594, y: 10, w: 110, h: 36 },
-  { id: 'btn_steal_fail', name: '盗塁失敗', type: 'label', hotkey: '', color: 'bg-sky-950/40 border-sky-800/60 hover:bg-sky-800/40 text-sky-400 font-bold', leadIn: 0, leadOut: 0, groupName: 'Play', x: 594, y: 52, w: 110, h: 36 },
-  { id: 'btn_pickoff_out', name: '牽制死', type: 'label', hotkey: '', color: 'bg-sky-950/40 border-sky-800/60 hover:bg-sky-800/40 text-sky-400 font-bold', leadIn: 0, leadOut: 0, groupName: 'Play', x: 594, y: 94, w: 110, h: 36 },
-  { id: 'btn_bunt', name: 'バント', type: 'label', hotkey: '', color: 'bg-amber-950/40 border-amber-800/60 hover:bg-amber-800/40 text-amber-400 font-bold', leadIn: 0, leadOut: 0, groupName: 'Tactics', x: 594, y: 136, w: 110, h: 36 },
-  { id: 'btn_endrun', name: 'エンドラン', type: 'label', hotkey: '', color: 'bg-amber-950/40 border-amber-800/60 hover:bg-amber-800/40 text-amber-400 font-bold', leadIn: 0, leadOut: 0, groupName: 'Tactics', x: 594, y: 178, w: 110, h: 36 },
-  { id: 'btn_squeeze', name: 'スクイズ', type: 'label', hotkey: '', color: 'bg-amber-950/40 border-amber-800/60 hover:bg-amber-800/40 text-amber-400 font-bold', leadIn: 0, leadOut: 0, groupName: 'Tactics', x: 594, y: 220, w: 110, h: 36 },
-
-  // Column 6: RBI & Special
-  { id: 'btn_rbi1', name: '1打点', type: 'label', hotkey: '', color: 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'RBI', x: 710, y: 10, w: 110, h: 36 },
-  { id: 'btn_rbi2', name: '2打点', type: 'label', hotkey: '', color: 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'RBI', x: 710, y: 52, w: 110, h: 36 },
-  { id: 'btn_rbi3', name: '3打点', type: 'label', hotkey: '', color: 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'RBI', x: 710, y: 94, w: 110, h: 36 },
-  { id: 'btn_rbi4', name: '4打点', type: 'label', hotkey: '', color: 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'RBI', x: 710, y: 136, w: 110, h: 36 },
-  { id: 'btn_fc', name: 'フィルダースチョイス', type: 'label', hotkey: '', color: 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Play', x: 710, y: 178, w: 110, h: 36 },
-  { id: 'btn_advance', name: '進塁', type: 'label', hotkey: '', color: 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold', leadIn: 0, leadOut: 0, groupName: 'Play', x: 710, y: 220, w: 110, h: 36 }
+  {
+    "id": "btn_pitch",
+    "name": "Pitch (投球)",
+    "type": "code",
+    "hotkey": "f",
+    "color": "bg-emerald-600 border-emerald-500 hover:bg-emerald-500 text-white font-extrabold shadow-emerald-950/40",
+    "fontSize": 11,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 4,
+    "leadOut": 2,
+    "x": 3,
+    "y": 6,
+    "w": 90,
+    "h": 43
+  },
+  {
+    "id": "btn_4seam",
+    "name": "4シーム",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 3,
+    "y": 101,
+    "w": 79,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_2seam",
+    "name": "2シーム",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 3,
+    "y": 130,
+    "w": 79,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_cutter",
+    "name": "カットボール",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 3,
+    "y": 158,
+    "w": 79,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_slider",
+    "name": "スライダー",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 3,
+    "y": 187,
+    "w": 79,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_sweeper",
+    "name": "スイーパー",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 3,
+    "y": 216,
+    "w": 79,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_slurve",
+    "name": "スラーブ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 3,
+    "y": 245,
+    "w": 79,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_curve",
+    "name": "カーブ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 84,
+    "y": 102,
+    "w": 84,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_kncurve",
+    "name": "ナックルカーブ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 84,
+    "y": 131,
+    "w": 84,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_changeup",
+    "name": "チェンジアップ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 84,
+    "y": 159,
+    "w": 84,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_splitter",
+    "name": "スプリット",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 84,
+    "y": 188,
+    "w": 84,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_fork",
+    "name": "フォーク",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 84,
+    "y": 217,
+    "w": 84,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_knuckle",
+    "name": "ナックル",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-sky-950/70 border-sky-900/40 hover:bg-sky-900/60 text-sky-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch Type",
+    "x": 84,
+    "y": 246,
+    "w": 84,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_calledstrike",
+    "name": "見逃しストライク",
+    "type": "label",
+    "hotkey": "s",
+    "color": "bg-sky-950/70 border-sky-800/60 hover:bg-sky-900/80 text-sky-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Strike&ball",
+    "x": 176,
+    "y": 0,
+    "w": 95,
+    "h": 24
+  },
+  {
+    "id": "btn_swingingstrike",
+    "name": "空振りストライク",
+    "type": "label",
+    "hotkey": "z",
+    "color": "bg-sky-950/70 border-sky-800/60 hover:bg-sky-900/80 text-sky-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Strike&ball",
+    "x": 175,
+    "y": 27,
+    "w": 95,
+    "h": 24
+  },
+  {
+    "id": "btn_foul",
+    "name": "ファール",
+    "type": "label",
+    "hotkey": "c",
+    "color": "bg-sky-950/70 border-sky-800/60 hover:bg-sky-900/80 text-sky-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Strike&ball",
+    "x": 175,
+    "y": 54,
+    "w": 95,
+    "h": 24
+  },
+  {
+    "id": "btn_ball",
+    "name": "ボール",
+    "type": "label",
+    "hotkey": "a",
+    "color": "bg-sky-950/70 border-sky-800/60 hover:bg-sky-900/80 text-sky-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Strike&ball",
+    "x": 175,
+    "y": 82,
+    "w": 95,
+    "h": 24
+  },
+  {
+    "id": "btn_grounder",
+    "name": "ゴロ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Batted Ball",
+    "x": 282,
+    "y": 93,
+    "w": 64,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_liner",
+    "name": "ライナー",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Batted Ball",
+    "x": 282,
+    "y": 120,
+    "w": 64,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_flyball",
+    "name": "フライ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Batted Ball",
+    "x": 282,
+    "y": 149,
+    "w": 64,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_popfly",
+    "name": "小フライ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-900/50 hover:bg-purple-900/60 text-purple-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Batted Ball",
+    "x": 282,
+    "y": 178,
+    "w": 64,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_steal_success",
+    "name": "盗塁成功",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-emerald-950/70 border-emerald-800/60 hover:bg-emerald-900/80 text-emerald-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Runner play",
+    "x": 280,
+    "y": 6,
+    "w": 61,
+    "h": 24
+  },
+  {
+    "id": "btn_steal_fail",
+    "name": "盗塁失敗",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-emerald-950/70 border-emerald-800/60 hover:bg-emerald-900/80 text-emerald-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "out",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Runner play",
+    "x": 280,
+    "y": 33,
+    "w": 61,
+    "h": 24
+  },
+  {
+    "id": "btn_bunt",
+    "name": "バント",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-amber-950/40 border-amber-800/60 hover:bg-amber-800/40 text-amber-400 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Tactics",
+    "x": 282,
+    "y": 207,
+    "w": 68,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_endrun",
+    "name": "エンドラン",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-amber-950/40 border-amber-800/60 hover:bg-amber-800/40 text-amber-400 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Tactics",
+    "x": 282,
+    "y": 235,
+    "w": 68,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_squeeze",
+    "name": "スクイズ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-amber-950/40 border-amber-800/60 hover:bg-amber-800/40 text-amber-400 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Tactics",
+    "x": 282,
+    "y": 262,
+    "w": 68,
+    "h": 24,
+    "fontSize": 8
+  },
+  {
+    "id": "btn_rbi1",
+    "name": "1打点",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "RBI",
+    "x": 358,
+    "y": 95,
+    "w": 61,
+    "h": 24,
+    "fontSize": 10
+  },
+  {
+    "id": "btn_rbi2",
+    "name": "2打点",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "RBI",
+    "x": 358,
+    "y": 122,
+    "w": 61,
+    "h": 24,
+    "fontSize": 10
+  },
+  {
+    "id": "btn_rbi3",
+    "name": "3打点",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "RBI",
+    "x": 358,
+    "y": 149,
+    "w": 61,
+    "h": 24,
+    "fontSize": 10
+  },
+  {
+    "id": "btn_rbi4",
+    "name": "4打点",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-300 font-bold",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "RBI",
+    "x": 359,
+    "y": 178,
+    "w": 61,
+    "h": 24,
+    "fontSize": 10
+  },
+  {
+    "id": "btn_fc",
+    "name": "FC",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-indigo-950/70 border-indigo-800/60 hover:bg-indigo-900/80 text-indigo-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "エラー類",
+    "x": 364,
+    "y": 209,
+    "w": 50,
+    "h": 24
+  },
+  {
+    "id": "btn_advance",
+    "name": "IFF",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-indigo-950/70 border-indigo-800/60 hover:bg-indigo-900/80 text-indigo-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "エラー類",
+    "x": 365,
+    "y": 236,
+    "w": 50,
+    "h": 24
+  },
+  {
+    "id": "btn_1783332404238",
+    "name": "OUT",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-amber-950/70 border-amber-800/60 hover:bg-amber-900/80 text-amber-300",
+    "fontSize": 11,
+    "badgePosition": "bottom-left",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Play Result",
+    "x": 435,
+    "y": 78,
+    "w": 59,
+    "h": 24
+  },
+  {
+    "id": "btn_1783333012788",
+    "name": "Hit",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-amber-950/70 border-amber-800/60 hover:bg-amber-900/80 text-amber-300",
+    "fontSize": 11,
+    "badgePosition": "bottom-left",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Play Result",
+    "x": 434,
+    "y": 107,
+    "w": 57,
+    "h": 24
+  },
+  {
+    "id": "btn_1783333063521",
+    "name": "牽制死",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-200",
+    "fontSize": 9,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "out",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pickoff",
+    "x": 282,
+    "y": 60,
+    "w": 59,
+    "h": 24
+  },
+  {
+    "id": "btn_1783333309088",
+    "name": "三振",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-red-950/70 border-red-800/60 hover:bg-red-900/80 text-red-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "out",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Strike out",
+    "x": 176,
+    "y": 110,
+    "w": 93,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334016852",
+    "name": "振り逃げ",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-red-950/70 border-red-800/60 hover:bg-red-900/80 text-red-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Strike out",
+    "x": 177,
+    "y": 138,
+    "w": 93,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334057318",
+    "name": "WP",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-800/60 hover:bg-purple-900/80 text-purple-300",
+    "fontSize": 9,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch error",
+    "x": 111,
+    "y": 9,
+    "w": 50,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334075252",
+    "name": "PB",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-800/60 hover:bg-purple-900/80 text-purple-300",
+    "fontSize": 9,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch error",
+    "x": 111,
+    "y": 35,
+    "w": 50,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334146535",
+    "name": "SF",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-emerald-950/70 border-emerald-800/60 hover:bg-emerald-900/80 text-emerald-300",
+    "fontSize": 11,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "犠飛・犠打",
+    "x": 179,
+    "y": 172,
+    "w": 64,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334194802",
+    "name": "SFB",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-emerald-950/70 border-emerald-800/60 hover:bg-emerald-900/80 text-emerald-300",
+    "fontSize": 11,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "犠飛・犠打",
+    "x": 178,
+    "y": 198,
+    "w": 66,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334293685",
+    "name": "IBB",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-red-950/70 border-red-800/60 hover:bg-red-900/80 text-red-300",
+    "fontSize": 9,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "pitch",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Result",
+    "x": 2,
+    "y": 61,
+    "w": 50,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334397550",
+    "name": "BK",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-purple-950/70 border-purple-800/60 hover:bg-purple-900/80 text-purple-300",
+    "fontSize": 9,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Pitch error",
+    "x": 112,
+    "y": 63,
+    "w": 50,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334667917",
+    "name": "Runner out",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-emerald-950/70 border-emerald-800/60 hover:bg-emerald-900/80 text-emerald-300",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "out",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Runner play",
+    "x": 181,
+    "y": 227,
+    "w": 73,
+    "h": 24
+  },
+  {
+    "id": "btn_1783334757266",
+    "name": "Interference",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-200",
+    "fontSize": 8,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Player error",
+    "x": 351,
+    "y": 6,
+    "w": 80,
+    "h": 24
+  },
+  {
+    "id": "btn_1783518232511",
+    "name": "四死球",
+    "type": "label",
+    "hotkey": "",
+    "color": "bg-amber-950/70 border-amber-800/60 hover:bg-amber-900/80 text-amber-300",
+    "fontSize": 10,
+    "badgePosition": "bottom-left",
+    "linkTrigger": "none",
+    "leadIn": 0,
+    "leadOut": 0,
+    "groupName": "Play Result",
+    "x": 435,
+    "y": 137,
+    "w": 58,
+    "h": 24
+  }
 ];
 
 const FOOTBALL_TEMPLATE: ButtonConfig[] = [
@@ -77,6 +763,7 @@ const TAG_GROUPS: { [group: string]: string[] } = {
   '判定/結果': ['見逃しストライク', '空振りストライク', 'ファール', 'ボール', '単打', '二塁打', '三塁打', '本塁打', '死球', '四球', '失策'],
   '打球の質': ['ゴロ', 'ライナー', 'フライ', '小フライ'],
   'コース': ['B11', 'B12', 'B13', 'B14', 'B15', 'B21', 'B22', 'B23', 'B24', 'B25', 'B31', 'B32', 'B33', 'B34', 'B35', 'B41', 'B42', 'B43', 'B44', 'B45', 'B51', 'B52', 'B53', 'B54', 'B55'],
+  '球速': [],
   'ランナー': ['なし', '1塁', '2塁', '3塁', '満塁', '1・2塁', '2・3塁', '1・3塁'],
   '打点': ['1打点', '2打点', '3打点', '4打点'],
   '作戦/他': ['バント', 'エンドラン', '牽制', '盗塁成功', '盗塁失敗', 'フィルダースチョイス'],
@@ -85,7 +772,7 @@ const TAG_GROUPS: { [group: string]: string[] } = {
 function App() {
   const [currentUser, setCurrentUser] = useState<string>(() => window.localStorage.getItem('sportscode_current_user') || '');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => window.localStorage.getItem('sportscode_is_logged_in') === 'true');
-  const [usersDb] = useState<{ [key: string]: { name: string; password?: string } }>(() => {
+  const [usersDb] = useState<{ [key: string]: { name: string; password?: string; email?: string } }>(() => {
     try {
       const saved = window.localStorage.getItem('sportscode_users_db');
       if (saved) return JSON.parse(saved);
@@ -102,14 +789,157 @@ function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Administrator Account Management panel states
+  // Administrator Account Management panel & Audit Log states
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminTab, setAdminTab] = useState<'accounts' | 'logs' | 'inquiries'>('accounts');
   const [adminAccountsList, setAdminAccountsList] = useState<any[]>([]);
+  const [adminLogsList, setAdminLogsList] = useState<any[]>([]);
+  const [adminLogFilter, setAdminLogFilter] = useState<'ALL' | 'LOGIN' | 'LOGIN_FAILED' | 'CSV_EXPORT' | 'VIDEO_EXPORT'>('ALL');
   const [adminPanelError, setAdminPanelError] = useState<string | null>(null);
   const [newTeamId, setNewTeamId] = useState('');
   const [newTeamPassword, setNewTeamPassword] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamEmail, setNewTeamEmail] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // App Settings & Language states
+  const [appLanguage, setAppLanguage] = useState<'ja' | 'en'>(() => {
+    return (window.localStorage.getItem('sportscode_app_language') as 'ja' | 'en') || 'ja';
+  });
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'password' | 'language' | 'support' | 'about'>('password');
+
+  // Support & In-app Inquiry Messaging states
+  const [userSupportMessageText, setUserSupportMessageText] = useState('');
+  const [userSupportHistory, setUserSupportHistory] = useState<any[]>([]);
+  const [adminSupportList, setAdminSupportList] = useState<any[]>([]);
+  const [adminReplyTextMap, setAdminReplyTextMap] = useState<{ [id: number]: string }>({});
+
+  const fetchUserSupportHistory = async () => {
+    if (!currentUser) return;
+    if (supabase) {
+      const { data } = await supabase
+        .from('support_messages')
+        .select('*')
+        .eq('team_id', currentUser)
+        .order('created_at', { ascending: false });
+      if (data) setUserSupportHistory(data);
+    }
+  };
+
+  const fetchAdminSupportList = async () => {
+    if (supabase) {
+      const { data } = await supabase
+        .from('support_messages')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (data) setAdminSupportList(data);
+    }
+  };
+
+  const handleSendUserSupportMessage = async () => {
+    const text = userSupportMessageText.trim();
+    if (!text) {
+      alert('メッセージ内容を入力してください');
+      return;
+    }
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('support_messages')
+        .insert({
+          team_id: currentUser,
+          message: text,
+          status: 'pending'
+        });
+
+      if (error) {
+        alert('送信に失敗しました: ' + error.message);
+        return;
+      }
+    }
+
+    alert('✅ お問い合わせを送信しました！管理者からの返信をお待ちください。');
+    setUserSupportMessageText('');
+    fetchUserSupportHistory();
+  };
+
+  const handleSendAdminReply = async (msgId: number) => {
+    const replyText = (adminReplyTextMap[msgId] || '').trim();
+    if (!replyText) {
+      alert('返信メッセージを入力してください');
+      return;
+    }
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('support_messages')
+        .update({
+          reply: replyText,
+          status: 'replied',
+          replied_at: new Date().toISOString()
+        })
+        .eq('id', msgId);
+
+      if (error) {
+        alert('返信に失敗しました: ' + error.message);
+        return;
+      }
+    }
+
+    alert('✅ 返信を送信しました！');
+    setAdminReplyTextMap(prev => ({ ...prev, [msgId]: '' }));
+    fetchAdminSupportList();
+  };
+
+  // Password Recovery / Reset states
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(() => {
+    return window.localStorage.getItem('sportscode_logged_in_with_temp') === 'true';
+  });
+  const [changeNewPass, setChangeNewPass] = useState('');
+  const [changeConfirmPass, setChangeConfirmPass] = useState('');
+  const [changePassError, setChangePassError] = useState<string | null>(null);
+
+  const handleChangeOwnPassword = async () => {
+    const newP = changeNewPass.trim();
+    if (!newP) {
+      setChangePassError('新しいパスワードを入力してください');
+      return;
+    }
+    if (newP !== changeConfirmPass.trim()) {
+      setChangePassError('確認用パスワードが一致しません');
+      return;
+    }
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .update({
+          password: newP,
+          temp_password: null,
+          temp_password_expires_at: null
+        })
+        .eq('id', currentUser);
+
+      if (error) {
+        setChangePassError('パスワード更新に失敗しました: ' + error.message);
+        return;
+      }
+    } else {
+      if (usersDb[currentUser]) {
+        usersDb[currentUser].password = newP;
+        window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+      }
+    }
+
+    window.localStorage.setItem('sportscode_current_password', newP);
+    window.localStorage.removeItem('sportscode_logged_in_with_temp');
+    setShowPasswordChangeModal(false);
+    setChangeNewPass('');
+    setChangeConfirmPass('');
+    setChangePassError(null);
+    alert('✅ パスワードの変更が完了しました！次回から新しいパスワードでログインできます。');
+  };
 
   // ---- Update system states ----
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'>('idle');
@@ -134,7 +964,20 @@ function App() {
       setUpdateStatus('downloading');
     });
     electronAPI.onUpdateDownloaded(() => {
-      setUpdateStatus('ready');
+      // On Mac, code signature check happens at install time — open browser instead
+      const isMacDownload = navigator.userAgent.includes('Mac');
+      if (isMacDownload) {
+        electronAPI?.openExternal?.('https://github.com/Hiroto79/sports-video-analysis/releases/latest');
+        setUpdateStatus('idle');
+      } else {
+        setUpdateStatus('ready');
+      }
+    });
+    electronAPI.onUpdateError((err: any) => {
+      console.error('Update check failed:', err);
+      // Silently reset to idle — no popup, no auto browser open
+      // User can click the update button again which will open the browser
+      setUpdateStatus('idle');
     });
 
     return () => electronAPI.removeAllUpdateListeners?.();
@@ -147,6 +990,20 @@ function App() {
       return;
     }
     if (updateStatus === 'available') {
+      // macOS requires valid Apple certificates for auto-updating in-app.
+      // Unsigned apps will fail with signature validation errors. Redirect Mac users to browser download!
+      const isMac = navigator.userAgent.includes('Mac');
+      if (isMac) {
+        const downloadUrl = 'https://github.com/Hiroto79/sports-video-analysis/releases/latest';
+        if (electronAPI?.openExternal) {
+          await electronAPI.openExternal(downloadUrl);
+        } else {
+          window.open(downloadUrl, '_blank');
+        }
+        setUpdateStatus('idle');
+        return;
+      }
+
       setUpdateStatus('downloading');
       electronAPI?.downloadUpdate();
       return;
@@ -163,6 +1020,46 @@ function App() {
     }
   };
 
+  // Access Logging Helper (Minimum logging for impersonation / security audit)
+  const logAccessEvent = async (
+    teamId: string,
+    actionType: 'LOGIN' | 'LOGIN_FAILED' | 'CSV_EXPORT' | 'VIDEO_EXPORT',
+    status: 'success' | 'failed',
+    details: Record<string, any> = {}
+  ) => {
+    if (!supabase) return;
+    try {
+      await supabase.from('access_logs').insert({
+        team_id: teamId,
+        action_type: actionType,
+        status: status,
+        details: {
+          ...details,
+          userAgent: navigator.userAgent.substring(0, 120),
+          time: new Date().toISOString()
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to record access log:', err);
+    }
+  };
+
+  const fetchAdminAccessLogs = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('access_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (!error && data) {
+        setAdminLogsList(data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch access logs:', err);
+    }
+  };
+
   const fetchAdminAccounts = async () => {
     if (!supabase) {
       // Offline fallback: Use usersDb
@@ -172,6 +1069,9 @@ function App() {
         team_name: info.name,
         is_active: true
       }));
+      if (!mockList.some(a => a.id === 'admin')) {
+        mockList.unshift({ id: 'admin', password: usersDb['admin']?.password || 'admin', team_name: '管理者', is_active: true });
+      }
       setAdminAccountsList(mockList);
       return;
     }
@@ -182,7 +1082,11 @@ function App() {
         .order('created_at', { ascending: false });
       
       if (!error && data) {
-        setAdminAccountsList(data);
+        const list = [...data];
+        if (!list.some(acc => acc.id === 'admin')) {
+          list.unshift({ id: 'admin', password: 'admin', team_name: '管理者', is_active: true });
+        }
+        setAdminAccountsList(list);
         setAdminPanelError(null);
       } else {
         setAdminPanelError(error?.message || 'アカウント一覧の取得に失敗しました');
@@ -193,19 +1097,72 @@ function App() {
   };
 
   const handleAdminUpdatePassword = async (id: string, newPass: string) => {
+    const trimmedPass = newPass.trim();
+    if (!trimmedPass) {
+      alert('新しいパスワードを入力してください');
+      return;
+    }
+
     if (supabase) {
+      const targetAccount = adminAccountsList.find(a => a.id === id);
       const { error } = await supabase
         .from('team_accounts')
-        .update({ password: newPass })
-        .eq('id', id);
+        .upsert({
+          id,
+          password: trimmedPass,
+          team_name: targetAccount?.team_name || (id === 'admin' ? '管理者' : null),
+          is_active: targetAccount?.is_active ?? true
+        });
       if (error) {
         alert('パスワード更新に失敗しました: ' + error.message);
         return;
       }
     } else {
-      usersDb[id] = { ...usersDb[id], password: newPass };
+      usersDb[id] = { ...usersDb[id], password: trimmedPass };
       window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
     }
+
+    // 自分自身のアカウントのパスワードを変更した場合は、ローカルのセッション保存も更新
+    if (id === currentUser) {
+      window.localStorage.setItem('sportscode_current_password', trimmedPass);
+    }
+
+    alert(`✅ アカウント「${id}」のパスワードを「${trimmedPass}」に変更しました。`);
+    fetchAdminAccounts();
+  };
+
+  const handleGenerateTempPassword = async (id: string) => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let tempPass = '';
+    for (let i = 0; i < 6; i++) {
+      tempPass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('team_accounts')
+          .update({
+            temp_password: tempPass,
+            temp_password_expires_at: expiresAt
+          })
+          .eq('id', id);
+
+        if (error) {
+          console.warn("Supabase temp_password update warning:", error.message);
+          // If column doesn't exist in DB schema, update standard password directly as a emergency fallback
+          await supabase
+            .from('team_accounts')
+            .update({ password: tempPass })
+            .eq('id', id);
+        }
+      } catch (err) {
+        console.warn("Temp password generation exception fallback:", err);
+      }
+    }
+
+    alert(`⚡ アカウント「${id}」の30分間有効な一時パスワードを発行しました！\n\n【一時パスワード】 ${tempPass}\n【有効期限】 30分間 (${new Date(expiresAt).toLocaleTimeString('ja-JP')}まで)\n\nこの一時パスワードで緊急ログインおよび再設定が可能です。`);
     fetchAdminAccounts();
   };
 
@@ -246,7 +1203,8 @@ function App() {
   };
 
   const handleAdminCreateTeam = async () => {
-    if (!newTeamId.trim() || !newTeamPassword.trim()) {
+    const trimmedId = newTeamId.trim();
+    if (!trimmedId || !newTeamPassword.trim()) {
       alert('IDとパスワードを入力してください');
       return;
     }
@@ -255,29 +1213,36 @@ function App() {
       const { error } = await supabase
         .from('team_accounts')
         .insert({
-          id: newTeamId.trim(),
+          id: trimmedId,
           password: newTeamPassword.trim(),
           team_name: newTeamName.trim() || null,
+          email: newTeamEmail.trim() || null,
           is_active: true
         });
       if (error) {
-        alert('登録に失敗しました: ' + error.message);
+        if (error.message.includes('duplicate key') || error.code === '23505') {
+          alert(`⚠️ ユーザーID「${trimmedId}」は既に存在・登録されています。別のIDをご指定いただくか、下のアカウント一覧で既存データを編集してください。`);
+        } else {
+          alert('登録に失敗しました: ' + error.message);
+        }
         return;
       }
     } else {
-      usersDb[newTeamId] = { name: newTeamName || newTeamId, password: newTeamPassword };
+      usersDb[trimmedId] = { name: newTeamName || trimmedId, password: newTeamPassword, email: newTeamEmail };
       window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
     }
 
     setNewTeamId('');
     setNewTeamPassword('');
     setNewTeamName('');
+    setNewTeamEmail('');
     fetchAdminAccounts();
   };
 
   useEffect(() => {
     if (showAdminPanel) {
       fetchAdminAccounts();
+      fetchAdminAccessLogs();
     }
   }, [showAdminPanel]);
 
@@ -292,6 +1257,13 @@ function App() {
       const userKey = `sportscode_user_${currentUser}_${key.replace('sportscode_', '')}`;
       const userVal = window.localStorage.getItem(userKey);
       if (userVal !== null) return userVal;
+      
+      // If a user is logged in, do NOT fall back to global keys for user-specific states.
+      // This prevents new accounts from inheriting old data of previous users.
+      const isolatedKeys = ['players', 'roster', 'accumulated_csv_events', 'quick_custom_map'];
+      const isIsolated = isolatedKeys.some(ik => key.toLowerCase().includes(ik));
+      if (isIsolated) return null;
+
       // Fallback
       return window.localStorage.getItem(key);
     },
@@ -342,7 +1314,7 @@ function App() {
       try {
         const { data, error } = await supabase
           .from('team_accounts')
-          .select('password, is_active, team_name')
+          .select('*')
           .eq('id', trimmedId)
           .single();
 
@@ -351,12 +1323,9 @@ function App() {
           databaseExists = true;
         } else if (error && error.code !== 'PGRST116') {
           console.error("Supabase login connection/table error:", error);
-          // If the error code is not 'no rows found' (PGRST116), the table doesn't exist or network is down.
-          // Fall back to local simulation.
           databaseExists = false;
         } else {
           console.warn("Supabase user row not found (PGRST116):", error);
-          // No rows found: the database exists but this ID was not found.
           databaseExists = true;
         }
       } catch (err) {
@@ -366,16 +1335,31 @@ function App() {
 
     if (databaseExists && supabaseUser) {
       if (!supabaseUser.is_active) {
+        logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { reason: 'Account inactive' });
         setLoginError('サブスクリプションの有効期限が切れています。管理側にお問い合わせください。');
         return;
       }
 
-      if (supabaseUser.password !== loginPassword) {
-        setLoginError('IDまたはパスワードが正しくありません');
+      const isNormalPasswordMatch = supabaseUser.password === loginPassword;
+      const isTempPasswordValid = supabaseUser.temp_password 
+        && supabaseUser.temp_password === loginPassword 
+        && supabaseUser.temp_password_expires_at 
+        && new Date(supabaseUser.temp_password_expires_at).getTime() > Date.now();
+
+      if (!isNormalPasswordMatch && !isTempPasswordValid) {
+        logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { reason: 'Incorrect password' });
+        setLoginError('IDまたはパスワードが正しくありません（※一時パスワードの場合は30分の有効期限をご確認ください）');
         return;
       }
 
+      if (isTempPasswordValid) {
+        window.localStorage.setItem('sportscode_logged_in_with_temp', 'true');
+      } else {
+        window.localStorage.removeItem('sportscode_logged_in_with_temp');
+      }
+
       // Login successful via Supabase
+      await logAccessEvent(trimmedId, 'LOGIN', 'success', { teamName: supabaseUser.team_name });
       window.localStorage.setItem('sportscode_current_user', trimmedId);
       window.localStorage.setItem('sportscode_current_password', loginPassword);
       window.localStorage.setItem('sportscode_is_logged_in', 'true');
@@ -392,11 +1376,13 @@ function App() {
     const user = usersDb[trimmedId];
     if (user) {
       if (user.password && user.password !== loginPassword) {
+        logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { reason: 'Incorrect password (local)' });
         setLoginError('IDまたはパスワードが正しくありません');
         return;
       }
 
       // Login successful via Local Simulation
+      await logAccessEvent(trimmedId, 'LOGIN', 'success', { teamName: user.name, mode: 'local' });
       window.localStorage.setItem('sportscode_current_user', trimmedId);
       window.localStorage.setItem('sportscode_current_password', loginPassword);
       window.localStorage.setItem('sportscode_is_logged_in', 'true');
@@ -410,10 +1396,11 @@ function App() {
     }
 
     // If both database check and local check failed
+    logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { reason: 'Account not found' });
     setLoginError('IDまたはパスワードが正しくありません');
   };
 
-  const handleForceLogout = (reason: string) => {
+  const handleForceLogout = (reason: string | null = null) => {
     window.localStorage.removeItem('sportscode_current_user');
     window.localStorage.removeItem('sportscode_current_password');
     window.localStorage.setItem('sportscode_is_logged_in', 'false');
@@ -424,7 +1411,7 @@ function App() {
     window.location.reload();
   };
 
-  // Periodic check to verify if the account is still valid (password hasn't changed, subscription hasn't expired)
+  // Periodic & Realtime check to verify if the account is still valid (password hasn't changed, subscription hasn't expired)
   useEffect(() => {
     if (!isLoggedIn || !currentUser) return;
 
@@ -436,14 +1423,20 @@ function App() {
         try {
           const { data, error } = await supabase
             .from('team_accounts')
-            .select('password, is_active')
+            .select('*')
             .eq('id', currentUser)
             .single();
 
           if (!error && data) {
-            if (data.password !== savedPassword || !data.is_active) {
-              // Remote password changed or account deactivated (e.g. subscription expired!)
-              handleForceLogout('サブスクリプションの有効期限が切れたか、パスワードが変更されました。再度ログインしてください。');
+            const isNormalPassValid = data.password === savedPassword;
+            const isTempPassValid = data.temp_password 
+              && data.temp_password === savedPassword 
+              && data.temp_password_expires_at 
+              && new Date(data.temp_password_expires_at).getTime() > Date.now();
+
+            if ((!isNormalPassValid && !isTempPassValid) || !data.is_active) {
+              // Remote password changed or account deactivated -> Silent logout
+              handleForceLogout(null);
             }
           }
         } catch (err) {
@@ -453,17 +1446,60 @@ function App() {
         // Local simulation: Check usersDb
         const user = usersDb[currentUser];
         if (user && user.password !== savedPassword) {
-          handleForceLogout('パスワードが変更されました。再度ログインしてください。');
+          handleForceLogout(null);
         }
       }
     };
 
-    // Run verification on mount
+    // Run verification immediately on mount
     verifySession();
 
-    // Check every 20 seconds
-    const interval = setInterval(verifySession, 20000);
-    return () => clearInterval(interval);
+    // 1. Check every 5 seconds for fast fallback
+    const interval = setInterval(verifySession, 5000);
+
+    // 2. Check immediately when window gains focus or tab becomes visible
+    const handleFocus = () => verifySession();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    // 3. Supabase Realtime Subscription for instant (sub-second) force logout across devices
+    let subscriptionChannel: any = null;
+    if (supabase) {
+      try {
+        subscriptionChannel = supabase
+          .channel(`realtime_account_watch_${currentUser}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'team_accounts',
+              filter: `id=eq.${currentUser}`
+            },
+            (payload) => {
+              const newPassword = payload.new?.password;
+              const newIsActive = payload.new?.is_active;
+              const savedPassword = window.localStorage.getItem('sportscode_current_password') || '';
+              if (newPassword !== savedPassword || !newIsActive) {
+                // Silent logout: return cleanly to login screen without notifications
+                handleForceLogout(null);
+              }
+            }
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn('Realtime subscription failed:', e);
+      }
+    }
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+      if (subscriptionChannel && supabase) {
+        supabase.removeChannel(subscriptionChannel);
+      }
+    };
   }, [isLoggedIn, currentUser, usersDb]);
 
   const [isCodeWindow, setIsCodeWindow] = useState(() => window.location.hash === '#code');
@@ -511,6 +1547,64 @@ function App() {
     }
     return INITIAL_PLAYERS;
   });
+
+  // Load roster from Supabase Cloud DB for the current logged-in team (Account-wide Sync)
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser) return;
+    let isMounted = true;
+    (async () => {
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('team_players')
+          .select('*')
+          .eq('team_id', currentUser);
+        if (!error && data && data.length > 0 && isMounted) {
+          const cloudPlayers: Player[] = data.map((p: any, idx: number) => ({
+            id: p.id,
+            name: p.name,
+            number: p.number || '',
+            hotkey: idx < 9 ? (idx + 1).toString() : '-',
+            teamName: currentUser,
+            hand: (p.hand as 'R' | 'L' | 'S') || 'R',
+            throws: (p.throws as 'R' | 'L') || 'R',
+            bats: (p.bats as 'R' | 'L' | 'S') || 'R',
+            positionType: (p.position as 'batter' | 'pitcher' | 'both') || 'pitcher'
+          }));
+          setPlayers(cloudPlayers);
+        }
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [isLoggedIn, currentUser]);
+
+  const updatePlayersAndSync = useCallback((newPlayers: Player[] | ((prev: Player[]) => Player[])) => {
+    setPlayers((prev: Player[]) => {
+      const next = typeof newPlayers === 'function' ? newPlayers(prev) : newPlayers;
+      if (currentUser && supabase) {
+        // Sync to cloud in background
+        (async () => {
+          try {
+            await supabase.from('team_players').delete().eq('team_id', currentUser);
+            if (next.length > 0) {
+              const payload = next.map(p => ({
+                id: p.id,
+                team_id: currentUser,
+                name: p.name,
+                number: p.number || '',
+                position: p.positionType || 'pitcher',
+                throws: p.throws || 'R',
+                bats: p.bats || 'R',
+                hand: p.hand || 'R',
+                updated_at: new Date().toISOString()
+              }));
+              await supabase.from('team_players').insert(payload);
+            }
+          } catch {}
+        })();
+      }
+      return next;
+    });
+  }, [currentUser]);
   const [buttons, setButtons] = useState<ButtonConfig[]>(() => {
     const saved = localStorage.getItem('sportscode_designer_layout');
     if (saved) {
@@ -549,7 +1643,18 @@ function App() {
   const [activePlayerId, setActivePlayerId] = useState<string | null>(null);
   const [activePlayerIdA, setActivePlayerIdA] = useState<string | null>(null);
   const [activePlayerIdB, setActivePlayerIdB] = useState<string | null>(null);
-  const [events, setEvents] = useState<TaggedEvent[]>([]);
+  const [events, setEvents] = useState<TaggedEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('SVA_LIVE_EVENTS_V1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error("Failed to parse saved events", e);
+    }
+    return [];
+  });
   const [, setEventsUndoStack] = useState<TaggedEvent[][]>([]);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [activeEventName, setActiveEventName] = useState<string | null>(null);
@@ -566,10 +1671,48 @@ function App() {
   // Event selection and right-click tag context menu state
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; eventId: string; activeGroup?: string } | null>(null);
+  const [activeSubmenuGroup, setActiveSubmenuGroup] = useState<{ groupName: string; top: number; left: number } | null>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
 
-  // App View Mode State: 'tagger' | 'analytics' | 'organizer' | 'matrix'
-  const [currentView, setCurrentView] = useState<'tagger' | 'analytics' | 'organizer' | 'matrix'>('tagger');
+  const [isBoxSelecting, setIsBoxSelecting] = useState(false);
+  const [boxSelectRect, setBoxSelectRect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+
+  // Global mouseup listener so box selection rubberband frame dismisses instantly when mouse is released
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsBoxSelecting(false);
+      setBoxSelectRect(null);
+    };
+    if (isBoxSelecting) {
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [isBoxSelecting]);
+
+  // App View Mode State: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger'
+  const [currentView, setCurrentView] = useState<'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger'>('tagger');
+
+  // Live Roster Accordion Open State
+  const [isLiveRosterOpen, setIsLiveRosterOpen] = useState(false);
+
+  // Pitch Speed Calculator / Keypad State (球速入力テンキー)
+  const [pitchSpeedInput, setPitchSpeedInput] = useState<string>('');
+
+  // Live Timer Mode (For tagging without video file loaded)
+  const [isLiveTimerRunning, setIsLiveTimerRunning] = useState(false);
+  const [liveTimerSeconds, setLiveTimerSeconds] = useState(0);
+
+  useEffect(() => {
+    let timerId: any = null;
+    if ((!videoUrl || currentView === 'live_tagger') && isLiveTimerRunning) {
+      timerId = setInterval(() => {
+        setLiveTimerSeconds(prev => prev + 0.1);
+      }, 100);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [videoUrl, isLiveTimerRunning, currentView]);
 
   // Timeline zoom & timeshift sync states
   const [timelineZoom, setTimelineZoom] = useState(100);
@@ -581,6 +1724,54 @@ function App() {
 
   // Timeline multi-selection state
   const [timelineSelectedIds, setTimelineSelectedIds] = useState<Set<string>>(new Set());
+
+  const handleUndo = useCallback(() => {
+    setEventsUndoStack(prevStack => {
+      if (prevStack.length === 0) return prevStack;
+      const nextStack = [...prevStack];
+      const prevEvents = nextStack.pop()!;
+      setEvents(prevEvents);
+      channelRef.current?.postMessage({ type: 'SYNC_EVENTS', events: prevEvents });
+      return nextStack;
+    });
+  }, []);
+
+  const handleBatchDeleteSelectedEvents = () => {
+    if (timelineSelectedIds.size === 0) return;
+    pushEventsUndo(events); // Save state for Cmd+Z undo
+    setEvents(prev => {
+      const next = prev.filter(ev => !timelineSelectedIds.has(ev.id));
+      channelRef.current?.postMessage({ type: 'SYNC_EVENTS', events: next });
+      return next;
+    });
+    setTimelineSelectedIds(new Set());
+  };
+
+  // Delete / Backspace key listener & Cmd+Z / Ctrl+Z Undo listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Cmd+Z (Mac) or Ctrl+Z (Windows) for Undo
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Delete / Backspace key for Mass Deletion without confirmation dialog
+      if ((e.key === 'Delete' || e.key === 'Backspace') && timelineSelectedIds.size > 0) {
+        e.preventDefault();
+        handleBatchDeleteSelectedEvents();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [timelineSelectedIds, handleUndo, events]);
 
   // Matrix/Timeline Popup Player Modal states
   const [matrixPlayerClips, setMatrixPlayerClips] = useState<TaggedEvent[]>([]);
@@ -594,6 +1785,7 @@ function App() {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [activePreviewClip, setActivePreviewClip] = useState<TaggedEvent | null>(null);
+  const [nowPlayingClipId, setNowPlayingClipId] = useState<string | null>(null);
 
   // Timeline track ordering & drag sorting states
   const [timelineTrackOrder, setTimelineTrackOrder] = useState<string[]>(() => {
@@ -672,6 +1864,7 @@ function App() {
   const videoPlayerRef = useRef<VideoPlayerRef>(null);
   const handleTriggerButtonFromSyncRef = useRef<any>(null);
   const isMetadataLoadedRef = useRef<boolean>(false);
+  const hasRestoredMatchContextRef = useRef<boolean>(false);
 
   // Sync layout buttons to localStorage and other windows
   const saveLayout = (newLayout: ButtonConfig[]) => {
@@ -679,6 +1872,85 @@ function App() {
     localStorage.setItem('sportscode_designer_layout', JSON.stringify(newLayout));
     channelRef.current?.postMessage({ type: 'SYNC_BUTTONS', buttons: newLayout });
   };
+
+  // アプリ起動時の試合コンテキスト自動復元 (初回マウント時最優先)
+  useEffect(() => {
+    if (isCodeWindow) return;
+    try {
+      const saved = localStorage.getItem('SVA_MATCH_CONTEXT_V1');
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.pitcherA) setPitcherA(data.pitcherA);
+        if (data.pitcherB) setPitcherB(data.pitcherB);
+
+        if (data.catcherIdA) setCatcherIdA(data.catcherIdA);
+        if (data.inf1IdA) setInf1IdA(data.inf1IdA);
+        if (data.inf2IdA) setInf2IdA(data.inf2IdA);
+        if (data.inf3IdA) setInf3IdA(data.inf3IdA);
+        if (data.inf4IdA) setInf4IdA(data.inf4IdA);
+        if (data.lfIdA) setLfIdA(data.lfIdA);
+        if (data.cfIdA) setCfIdA(data.cfIdA);
+        if (data.rfIdA) setRfIdA(data.rfIdA);
+        if (data.dhIdA) setDhIdA(data.dhIdA);
+        if (data.defenseA) setDefenseA(data.defenseA);
+
+        if (data.catcherIdB) setCatcherIdB(data.catcherIdB);
+        if (data.inf1IdB) setInf1IdB(data.inf1IdB);
+        if (data.inf2IdB) setInf2IdB(data.inf2IdB);
+        if (data.inf3IdB) setInf3IdB(data.inf3IdB);
+        if (data.inf4IdB) setInf4IdB(data.inf4IdB);
+        if (data.lfIdB) setLfIdB(data.lfIdB);
+        if (data.cfIdB) setCfIdB(data.cfIdB);
+        if (data.rfIdB) setRfIdB(data.rfIdB);
+        if (data.dhIdB) setDhIdB(data.dhIdB);
+        if (data.defenseB) setDefenseB(data.defenseB);
+
+        if (data.inningNum) setInningNum(data.inningNum);
+        if (data.inningHalf) setInningHalf(data.inningHalf);
+        if (typeof data.balls === 'number') setBalls(data.balls);
+        if (typeof data.strikes === 'number') setStrikes(data.strikes);
+        if (typeof data.outs === 'number') setOuts(data.outs);
+        if (data.runner1BId) setRunner1BId(data.runner1BId);
+        if (data.runner2BId) setRunner2BId(data.runner2BId);
+        if (data.runner3BId) setRunner3BId(data.runner3BId);
+        if (data.activePlayerId) setActivePlayerId(data.activePlayerId);
+      }
+    } catch (e) {
+      console.error('Failed to restore match context:', e);
+    } finally {
+      hasRestoredMatchContextRef.current = true;
+    }
+  }, [isCodeWindow]);
+
+  // 試合中の守備位置・試合進行状態・打順コンテキストの localStorage リアルタイム自動保存 (復元後のみ保存実行)
+  useEffect(() => {
+    if (isCodeWindow || !hasRestoredMatchContextRef.current) return;
+    const matchContext = {
+      pitcherA, pitcherB,
+      catcherIdA, inf1IdA, inf2IdA, inf3IdA, inf4IdA, lfIdA, cfIdA, rfIdA, dhIdA, defenseA,
+      catcherIdB, inf1IdB, inf2IdB, inf3IdB, inf4IdB, lfIdB, cfIdB, rfIdB, dhIdB, defenseB,
+      inningNum, inningHalf,
+      balls, strikes, outs,
+      runner1BId, runner2BId, runner3BId,
+      activePlayerId,
+    };
+    localStorage.setItem('SVA_MATCH_CONTEXT_V1', JSON.stringify(matchContext));
+  }, [
+    pitcherA, pitcherB,
+    catcherIdA, inf1IdA, inf2IdA, inf3IdA, inf4IdA, lfIdA, cfIdA, rfIdA, dhIdA, defenseA,
+    catcherIdB, inf1IdB, inf2IdB, inf3IdB, inf4IdB, lfIdB, cfIdB, rfIdB, dhIdB, defenseB,
+    inningNum, inningHalf,
+    balls, strikes, outs,
+    runner1BId, runner2BId, runner3BId,
+    activePlayerId,
+    isCodeWindow
+  ]);
+
+  // 打刻イベント (events) の localStorage リアルタイム自動保存 (リロードやクラッシュ対策)
+  useEffect(() => {
+    if (isCodeWindow) return;
+    localStorage.setItem('SVA_LIVE_EVENTS_V1', JSON.stringify(events));
+  }, [events, isCodeWindow]);
 
   const handleActivePresetChange = (name: 'baseball' | 'football' | 'blank') => {
     setActivePresetName(name);
@@ -813,6 +2085,31 @@ function App() {
     } else {
       // MAIN WINDOW: Listen to Code Window tagging actions
       switch (data.type) {
+        case 'UPDATE_PITCH_SPEED':
+          setPitchSpeedInput(data.value);
+          if (data.value) {
+            const formattedVal = data.value.endsWith('km/h') ? data.value : `${data.value}km/h`;
+            const targetId = selectedEventId || activeEventId;
+            if (targetId) {
+              setEvents(prevEvents =>
+                prevEvents.map(ev => {
+                  if (ev.id === targetId) {
+                    return {
+                      ...ev,
+                      labels: {
+                        ...ev.labels,
+                        '球速': formattedVal,
+                        'Pitch Speed': formattedVal,
+                        'PITCH_SPEED': formattedVal
+                      }
+                    };
+                  }
+                  return ev;
+                })
+              );
+            }
+          }
+          break;
         case 'TOGGLE_PLAY':
           if (videoPlayerRef.current) {
             videoPlayerRef.current.togglePlay();
@@ -1146,10 +2443,26 @@ function App() {
       const key = toHalfWidth(rawKey);
 
       // Space: play/pause
-      if (e.code === 'Space') {
+      if (e.code === 'Space' && !(e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA|SELECT/i)) {
         e.preventDefault();
         if (videoPlayerRef.current) {
           videoPlayerRef.current.togglePlay();
+        }
+      }
+
+      // ArrowLeft / ArrowRight: Frame step (0.1s back / forward)
+      if (e.key === 'ArrowLeft' && !(e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA|SELECT/i)) {
+        e.preventDefault();
+        const video = videoPlayerRef.current?.getVideoElement();
+        if (video) {
+          video.currentTime = Math.max(0, video.currentTime - 0.1);
+        }
+      }
+      if (e.key === 'ArrowRight' && !(e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA|SELECT/i)) {
+        e.preventDefault();
+        const video = videoPlayerRef.current?.getVideoElement();
+        if (video) {
+          video.currentTime = Math.min(video.duration || 99999, video.currentTime + 0.1);
         }
       }
 
@@ -1405,6 +2718,7 @@ function App() {
     content += `ffmpeg -y -f concat -safe 0 -i clips_output/concat_list.txt -c copy "clips_output/digest_combined_${scriptName}.mp4"\n\n`;
     content += `echo "すべて完了しました！ clips_output フォルダをご確認ください。"\n`;
 
+    logAccessEvent(currentUser || 'guest', 'VIDEO_EXPORT', 'success', { clipCount: selectedClips.length, videoName: originalVideoPath });
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const downloadUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1443,7 +2757,7 @@ function App() {
   };
 
 
-  const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix') => {
+  const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger') => {
     try {
       const video = videoPlayerRef.current?.getVideoElement();
       if (video) {
@@ -1556,7 +2870,8 @@ function App() {
         start_time: ev.startTime,
         end_time: ev.endTime,
         player_name: ev.playerName || null,
-        labels: ev.labels
+        labels: ev.labels,
+        owner: currentUser || null
       });
     } catch (err) {
       console.warn("Supabase upsert failed:", err);
@@ -1583,10 +2898,16 @@ function App() {
 
       if (supabase) {
         try {
-          const { data, error } = await supabase
+          let query = supabase
             .from('events')
             .select('*')
             .eq('video_name', videoName);
+          
+          if (currentUser) {
+            query = query.eq('owner', currentUser);
+          }
+
+          const { data, error } = await query;
 
           if (!error && data) {
             const loaded: TaggedEvent[] = data.map(d => ({
@@ -1960,7 +3281,7 @@ function App() {
     };
     updatePlayerHandednessHistory(name, throws, bats);
     const updated = [...players, newPlayer];
-    setPlayers(updated);
+    updatePlayersAndSync(updated);
     if (videoName) {
       localStorage.setItem(`sportscode_players_${videoName}`, JSON.stringify(updated));
     } else {
@@ -1971,7 +3292,7 @@ function App() {
 
   const handleDeletePlayer = (id: string) => {
     const updated = players.filter(p => p.id !== id);
-    setPlayers(updated);
+    updatePlayersAndSync(updated);
     channelRef.current?.postMessage({ type: 'SYNC_PLAYERS', players: updated });
     if (activePlayerId === id) {
       setActivePlayerId(null);
@@ -1983,7 +3304,7 @@ function App() {
     setTeamAName(newVal);
     channelRef.current?.postMessage({ type: 'UPDATE_TEAMA_NAME', value: newVal });
 
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const updated = prev.map(p => {
         if (p.teamName === oldVal) {
           return { ...p, teamName: newVal };
@@ -2005,7 +3326,7 @@ function App() {
     setTeamBName(newVal);
     channelRef.current?.postMessage({ type: 'UPDATE_TEAMB_NAME', value: newVal });
 
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const updated = prev.map(p => {
         if (p.teamName === oldVal) {
           return { ...p, teamName: newVal };
@@ -2023,7 +3344,7 @@ function App() {
   };
 
   const handleClearRoster = () => {
-    setPlayers([]);
+    updatePlayersAndSync([]);
     if (videoName) {
       localStorage.removeItem(`sportscode_players_${videoName}`);
     } else {
@@ -2067,7 +3388,7 @@ function App() {
   };
 
   const handleUpdatePlayerHand = (id: string, hand: 'R' | 'L' | 'S') => {
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const next = prev.map(p => {
         if (p.id === id) {
           updatePlayerHandednessHistory(p.name, hand === 'S' ? 'R' : hand, hand, p.sourceCsvName);
@@ -2086,7 +3407,7 @@ function App() {
   };
 
   const handleUpdatePlayerThrows = (id: string, throws: 'R' | 'L') => {
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const next = prev.map(p => {
         if (p.id === id) {
           updatePlayerHandednessHistory(p.name, throws, p.bats, p.sourceCsvName);
@@ -2105,7 +3426,7 @@ function App() {
   };
 
   const handleUpdatePlayerBats = (id: string, bats: 'R' | 'L' | 'S') => {
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const next = prev.map(p => {
         if (p.id === id) {
           updatePlayerHandednessHistory(p.name, p.throws, bats, p.sourceCsvName);
@@ -2124,7 +3445,7 @@ function App() {
   };
 
   const handleUpdatePlayerBattingOrder = (id: string, order: number | undefined) => {
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const targetPlayer = prev.find(p => p.id === id);
       const next = prev.map(p => {
         if (p.id === id) {
@@ -2147,7 +3468,7 @@ function App() {
   };
 
   const handleTogglePlayerPosition = (id: string) => {
-    setPlayers(prev => {
+    updatePlayersAndSync(prev => {
       const next = prev.map(p => {
         if (p.id !== id) return p;
         let nextPos: 'batter' | 'pitcher' | 'both' = 'pitcher';
@@ -2303,6 +3624,7 @@ function App() {
       ...rows.map(row => row.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
     ].join('\n');
 
+    logAccessEvent(currentUser || 'guest', 'CSV_EXPORT', 'success', { recordCount: events.length, fileName: `WBC_GameLog_${Date.now()}.csv` });
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -2321,6 +3643,33 @@ function App() {
     const link = document.createElement('a');
     link.setAttribute('href', url);
     link.setAttribute('download', `sportscode_tags_${videoName ? videoName.substring(0, videoName.lastIndexOf('.')) : 'export'}_${Date.now()}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportXML = () => {
+    if (events.length === 0) return;
+    const xmlRows = events.map(ev => `
+      <instance>
+        <ID>${ev.id}</ID>
+        <start>${ev.startTime.toFixed(2)}</start>
+        <end>${ev.endTime.toFixed(2)}</end>
+        <code_name>${ev.actionName}</code_name>
+        ${Object.entries(ev.labels).map(([k, v]) => `<label><category>${k}</category><text>${v}</text></label>`).join('')}
+      </instance>`).join('');
+
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<file>
+  <ALL_INSTANCES>${xmlRows}
+  </ALL_INSTANCES>
+</file>`;
+
+    const blob = new Blob([xmlContent], { type: 'text/xml;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `sportscode_tags_${gameDate || 'export'}.xml`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2586,6 +3935,32 @@ function App() {
     }
   };
 
+  // Live tagger: direct trigger (no BroadcastChannel needed since it's not a separate code window)
+  const handleTriggerButtonDirectly = (btn: ButtonConfig) => {
+    if (handleTriggerButtonFromSyncRef.current) {
+      const activePlayerObj = players.find(p => p.id === activePlayerId);
+      const isTeamAActive = activePlayerObj?.teamName === teamAName;
+      const activePitcher = isTeamAActive ? pitcherB : (pitcherA || '');
+      const activeCatcherId = inningHalf === 'top' ? catcherIdA : catcherIdB;
+      handleTriggerButtonFromSyncRef.current(
+        btn, activePlayerId, balls, strikes, outs,
+        activePitcher, inningHalf === 'top' ? defenseA : defenseB,
+        selectedCourse, plottedHit, coursePerspective,
+        inningNum, inningHalf,
+        runner1BId, runner2BId, runner3BId,
+        activeCatcherId,
+        inningHalf === 'top' ? inf1IdA : inf1IdB,
+        inningHalf === 'top' ? inf2IdA : inf2IdB,
+        inningHalf === 'top' ? inf3IdA : inf3IdB,
+        inningHalf === 'top' ? inf4IdA : inf4IdB,
+        inningHalf === 'top' ? lfIdA : lfIdB,
+        inningHalf === 'top' ? cfIdA : cfIdB,
+        inningHalf === 'top' ? rfIdA : rfIdB,
+        activeEventId || undefined
+      );
+    }
+  };
+
   // Main Window trigger evaluator
   const handleTriggerButtonFromSync = (
     btn: ButtonConfig, 
@@ -2657,8 +4032,7 @@ function App() {
     };
 
     if (btn.type === 'code') {
-      if (!videoPlayerRef.current) return;
-      const timestamp = videoPlayerRef.current.getCurrentTime();
+      const timestamp = videoPlayerRef.current ? videoPlayerRef.current.getCurrentTime() : liveTimerSeconds;
       
       const startTime = Math.max(0, timestamp - (btn.leadIn || 0));
       const endTime = videoDuration > 0 
@@ -2679,6 +4053,9 @@ function App() {
         'Course': course || '-',
         'Hit_Plot': hitLocation ? `${Math.floor(hitLocation.x)},${Math.floor(hitLocation.y)}` : '-',
         'Team': activePlayerObj?.teamName || '-',
+        'Pitch Speed': pitchSpeedInput ? (pitchSpeedInput.endsWith('km/h') ? pitchSpeedInput : `${pitchSpeedInput}km/h`) : '-',
+        '球速': pitchSpeedInput ? (pitchSpeedInput.endsWith('km/h') ? pitchSpeedInput : `${pitchSpeedInput}km/h`) : '-',
+        'PITCH_SPEED': pitchSpeedInput ? (pitchSpeedInput.endsWith('km/h') ? pitchSpeedInput : `${pitchSpeedInput}km/h`) : '-',
 
         'Runner 1B': resolvedR1Id ? (players.find(p => p.id === resolvedR1Id || p.name === resolvedR1Id)?.name || resolvedR1Id) : 'None',
         'Runner 2B': resolvedR2Id ? (players.find(p => p.id === resolvedR2Id || p.name === resolvedR2Id)?.name || resolvedR2Id) : 'None',
@@ -2725,14 +4102,17 @@ function App() {
         gameDate: gameDate || undefined
       };
 
+      pushEventsUndo(events);
       setEvents(prev => [newEvent, ...prev]);
       setActiveEventId(newEvent.id);
       syncEventToSupabase(newEvent);
 
-      // Auto-clear Strike Zone grid selections and outfield plots
+      // Auto-clear Strike Zone grid selections, outfield plots, and pitch speed input!
       setSelectedCourse('');
       setPlottedHit(null);
       setPreSelectedLabels([]);
+      setPitchSpeedInput('');
+      channelRef.current?.postMessage({ type: 'UPDATE_PITCH_SPEED', value: '' });
       channelRef.current?.postMessage({ type: 'UPDATE_COURSE', value: '' });
       channelRef.current?.postMessage({ type: 'UPDATE_PLOTTED_HIT', value: null });
       channelRef.current?.postMessage({ type: 'UPDATE_PRESELECTED_LABELS', value: [] });
@@ -2917,6 +4297,66 @@ function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms}`;
   };
 
+  // --- DEDICATED URL PASSWORD RESET VIEW (From Email Link) ---
+  const isResetURL = window.location.hash.includes('reset-password') 
+    || window.location.search.includes('type=recovery')
+    || window.location.search.includes('reset_token');
+
+  if (isResetURL) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black z-50 flex items-center justify-center p-4">
+        <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col gap-6 backdrop-blur-xl">
+          <div className="text-center">
+            <div className="mx-auto w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-emerald-950/40">
+              🔑
+            </div>
+            <h2 className="text-lg font-black text-white mt-4 tracking-tight">パスワードの再設定</h2>
+            <p className="text-xs text-zinc-400 mt-1">
+              メールリンク認証が完了しました。新しいパスワードを2回入力してください。（※メールアドレスの再入力は不要です）
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400">新しいパスワード</label>
+              <input
+                type="password"
+                placeholder="新しいパスワード"
+                value={changeNewPass}
+                onChange={(e) => setChangeNewPass(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400">確認のため再入力 (2回目)</label>
+              <input
+                type="password"
+                placeholder="もう一度パスワードを入力"
+                value={changeConfirmPass}
+                onChange={(e) => setChangeConfirmPass(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
+              />
+            </div>
+
+            {changePassError && (
+              <p className="text-[10px] text-rose-500 font-bold text-center bg-rose-950/20 p-2 rounded-lg border border-rose-900/30">
+                ⚠️ {changePassError}
+              </p>
+            )}
+          </div>
+
+          <button
+            onClick={handleChangeOwnPassword}
+            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-emerald-950/30 hover:shadow-emerald-950/50 cursor-pointer text-center active:scale-95"
+          >
+            新しいパスワードを保存
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // --- USER AUTHENTICATION / LOGIN OVERLAY (Blocks Main & Code Windows if not logged in) ---
   if (!isLoggedIn) {
     return (
@@ -3011,6 +4451,32 @@ function App() {
             }
           }}
 
+          pitchSpeedInput={pitchSpeedInput}
+          onUpdatePitchSpeedInput={(val) => {
+            setPitchSpeedInput(val);
+            channelRef.current?.postMessage({ type: 'UPDATE_PITCH_SPEED', value: val });
+            const formattedVal = val ? (val.endsWith('km/h') ? val : `${val}km/h`) : '';
+            const targetId = selectedEventId || activeEventId;
+            if (targetId && formattedVal) {
+              setEvents(prevEvents =>
+                prevEvents.map(ev => {
+                  if (ev.id === targetId) {
+                    return {
+                      ...ev,
+                      labels: {
+                        ...ev.labels,
+                        '球速': formattedVal,
+                        'Pitch Speed': formattedVal,
+                        'PITCH_SPEED': formattedVal
+                      }
+                    };
+                  }
+                  return ev;
+                })
+              );
+            }
+          }}
+
           balls={balls}
           strikes={strikes}
           outs={outs}
@@ -3072,15 +4538,15 @@ function App() {
               setPitcherB(val);
             }
           }}
-          defense={inningHalf === 'top' ? defenseA : defenseB}
+          defense={inningHalf === 'top' ? defenseB : defenseA}
           onUpdateDefense={(val) => {
             if (isCodeWindow) {
-              if (inningHalf === 'top') setDefenseA(val);
-              else setDefenseB(val);
+              if (inningHalf === 'top') setDefenseB(val);
+              else setDefenseA(val);
               channelRef.current?.postMessage({ type: 'UPDATE_DEFENSE', value: val });
             } else {
-              if (inningHalf === 'top') setDefenseA(val);
-              else setDefenseB(val);
+              if (inningHalf === 'top') setDefenseB(val);
+              else setDefenseA(val);
             }
           }}
           selectedCourse={selectedCourse}
@@ -3171,58 +4637,58 @@ function App() {
               setRunner3BId(val);
             }
           }}
-          catcherId={inningHalf === 'top' ? catcherIdA : catcherIdB}
+          catcherId={inningHalf === 'top' ? catcherIdB : catcherIdA}
           onUpdateCatcherId={(val) => {
-            if (inningHalf === 'top') setCatcherIdA(val);
-            else setCatcherIdB(val);
+            if (inningHalf === 'top') setCatcherIdB(val);
+            else setCatcherIdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_CATCHER_ID', value: val, inningHalf });
           }}
-          inf1Id={inningHalf === 'top' ? inf1IdA : inf1IdB}
+          inf1Id={inningHalf === 'top' ? inf1IdB : inf1IdA}
           onUpdateInf1Id={(val) => {
-            if (inningHalf === 'top') setInf1IdA(val);
-            else setInf1IdB(val);
+            if (inningHalf === 'top') setInf1IdB(val);
+            else setInf1IdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_INF1_ID', value: val, inningHalf });
           }}
-          inf2Id={inningHalf === 'top' ? inf2IdA : inf2IdB}
+          inf2Id={inningHalf === 'top' ? inf2IdB : inf2IdA}
           onUpdateInf2Id={(val) => {
-            if (inningHalf === 'top') setInf2IdA(val);
-            else setInf2IdB(val);
+            if (inningHalf === 'top') setInf2IdB(val);
+            else setInf2IdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_INF2_ID', value: val, inningHalf });
           }}
-          inf3Id={inningHalf === 'top' ? inf3IdA : inf3IdB}
+          inf3Id={inningHalf === 'top' ? inf3IdB : inf3IdA}
           onUpdateInf3Id={(val) => {
-            if (inningHalf === 'top') setInf3IdA(val);
-            else setInf3IdB(val);
+            if (inningHalf === 'top') setInf3IdB(val);
+            else setInf3IdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_INF3_ID', value: val, inningHalf });
           }}
-          inf4Id={inningHalf === 'top' ? inf4IdA : inf4IdB}
+          inf4Id={inningHalf === 'top' ? inf4IdB : inf4IdA}
           onUpdateInf4Id={(val) => {
-            if (inningHalf === 'top') setInf4IdA(val);
-            else setInf4IdB(val);
+            if (inningHalf === 'top') setInf4IdB(val);
+            else setInf4IdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_INF4_ID', value: val, inningHalf });
           }}
-          lfId={inningHalf === 'top' ? lfIdA : lfIdB}
+          lfId={inningHalf === 'top' ? lfIdB : lfIdA}
           onUpdateLfId={(val) => {
-            if (inningHalf === 'top') setLfIdA(val);
-            else setLfIdB(val);
+            if (inningHalf === 'top') setLfIdB(val);
+            else setLfIdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_LF_ID', value: val, inningHalf });
           }}
-          cfId={inningHalf === 'top' ? cfIdA : cfIdB}
+          cfId={inningHalf === 'top' ? cfIdB : cfIdA}
           onUpdateCfId={(val) => {
-            if (inningHalf === 'top') setCfIdA(val);
-            else setCfIdB(val);
+            if (inningHalf === 'top') setCfIdB(val);
+            else setCfIdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_CF_ID', value: val, inningHalf });
           }}
-          rfId={inningHalf === 'top' ? rfIdA : rfIdB}
+          rfId={inningHalf === 'top' ? rfIdB : rfIdA}
           onUpdateRfId={(val) => {
-            if (inningHalf === 'top') setRfIdA(val);
-            else setRfIdB(val);
+            if (inningHalf === 'top') setRfIdB(val);
+            else setRfIdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_RF_ID', value: val, inningHalf });
           }}
-          dhId={inningHalf === 'top' ? dhIdA : dhIdB}
+          dhId={inningHalf === 'top' ? dhIdB : dhIdA}
           onUpdateDhId={(val) => {
-            if (inningHalf === 'top') setDhIdA(val);
-            else setDhIdB(val);
+            if (inningHalf === 'top') setDhIdB(val);
+            else setDhIdA(val);
             if (isCodeWindow) channelRef.current?.postMessage({ type: 'UPDATE_DH_ID', value: val, inningHalf });
           }}
           onUpdatePlayerBattingOrder={handleUpdatePlayerBattingOrder}
@@ -3281,75 +4747,85 @@ function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
       {/* Header Banner */}
-      <header className="px-4 py-3 lg:px-6 lg:py-4 bg-zinc-900/60 border-b border-zinc-850 backdrop-blur-md flex flex-col lg:flex-row gap-3 items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3 w-full lg:w-auto">
-          <div className="bg-emerald-600 p-2 rounded-lg text-white shadow-lg shadow-emerald-900/30 shrink-0">
-            <Tv className="w-5 h-5" />
+      <header className="px-3 py-2 xl:px-4 xl:py-2 bg-zinc-900/90 border-b border-zinc-850 backdrop-blur-md flex flex-wrap gap-2 items-center justify-between sticky top-0 z-40 w-full max-w-full overflow-x-hidden">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="bg-emerald-600 p-1.5 rounded-lg text-white shadow-lg shadow-emerald-900/30 shrink-0">
+            <Tv className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-sm lg:text-base font-extrabold tracking-tight text-white flex flex-wrap items-center gap-1.5 truncate">
-              <span>スポーツビデオタグ＆スタッツロガー</span>
-              <span className="text-[9px] bg-red-950 border border-red-800 text-red-400 font-bold px-1.5 py-0.5 rounded">
+            <h1 className="text-xs sm:text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5 truncate">
+              <span>{appLanguage === 'en' ? 'Sports Video Tagger & Stats Logger' : 'スポーツビデオタグ＆スタッツロガー'}</span>
+              <span className="text-[8px] bg-red-950 border border-red-800 text-red-400 font-bold px-1 py-0.2 rounded hidden sm:inline-block">
                 Elite v9.0
               </span>
             </h1>
-            <p className="hidden lg:block text-xs text-zinc-400 mt-0.5">Sportscode Elite: 画面連動型デュアルウィンドウ設定</p>
           </div>
         </div>
 
         {/* Workspace select tab and popout buttons */}
-        <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end shrink-0">
-          <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 shadow-inner select-none gap-1">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0 max-w-full">
+          <div className="flex flex-wrap bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 shadow-inner select-none gap-0.5">
             <button
               onClick={() => handleViewChange('tagger')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
                 currentView === 'tagger'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
-              📹 ビデオ＆タグ記録
+              📹 {appLanguage === 'en' ? 'Tagger' : 'タグ記録'}
             </button>
             <button
               onClick={() => handleViewChange('organizer')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
                 currentView === 'organizer'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
-              📁 オーガナイザー＆エディタ
+              📁 {appLanguage === 'en' ? 'Organizer' : 'オーガナイザー'}
             </button>
             <button
               onClick={() => handleViewChange('matrix')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
                 currentView === 'matrix'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
-              🧮 マトリックス (Matrix)
+              🧮 {appLanguage === 'en' ? 'Matrix' : 'マトリックス'}
             </button>
             <button
               onClick={() => handleViewChange('analytics')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
                 currentView === 'analytics'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
-              📊 自動分析ダッシュボード
+              📊 {appLanguage === 'en' ? 'Analytics' : '自動分析'}
+            </button>
+            <button
+              onClick={() => handleViewChange('live_tagger')}
+              className={`px-2 py-1 rounded text-[10px] font-extrabold transition-all cursor-pointer border ${
+                currentView === 'live_tagger'
+                  ? 'bg-gradient-to-r from-amber-600 to-emerald-600 border-amber-400 text-white shadow shadow-amber-950'
+                  : 'bg-zinc-900/80 border-amber-900/50 text-amber-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="動画ファイルを読み込まず、超軽量・高速に現地試合をリアルタイム打刻します"
+            >
+              ⏱️ {appLanguage === 'en' ? 'Live Tagger' : 'ライブ打刻'}
             </button>
           </div>
 
           {/* Change / Open Video Button */}
           <button
             onClick={() => videoFileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/80 border border-emerald-800/80 hover:bg-emerald-900 text-[10px] font-bold text-emerald-300 hover:text-white rounded-lg cursor-pointer transition-colors shadow"
+            className="flex items-center gap-1 px-2 py-1 bg-emerald-950/80 border border-emerald-800/80 hover:bg-emerald-900 text-[9px] font-bold text-emerald-300 hover:text-white rounded-lg cursor-pointer transition-colors shadow"
             title="新しい動画ファイルを読み込みます"
           >
-            <Upload className="w-3.5 h-3.5 text-emerald-400" />
-            動画を変更 / 開く
+            <Upload className="w-3 h-3 text-emerald-400" />
+            {appLanguage === 'en' ? 'Open Video' : '動画変更'}
           </button>
           <input
             type="file"
@@ -3359,58 +4835,76 @@ function App() {
             className="hidden"
           />
 
-          {/* Browser Popout button */}
+          {/* Code Window popout button */}
           <button
             onClick={handlePopoutCodeWindow}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-[10px] font-bold text-sky-400 hover:text-sky-300 rounded-lg cursor-pointer transition-colors"
-            title="コードタグ窓をポップアウト表示します"
+            className="flex items-center gap-1 px-2 py-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-[9px] font-bold text-sky-400 hover:text-sky-300 rounded-lg cursor-pointer transition-colors"
+            title="コード入力画面を別ウィンドウで開きます"
           >
-            <ExternalLink className="w-3 h-3" />
-            コードウィンドウをポップアウト
+            <ExternalLink className="w-2.5 h-2.5" />
+            {appLanguage === 'en' ? 'Code Window' : 'コード画面'}
           </button>
 
-          {/* Update button */}
-          <button
-            onClick={handleCheckForUpdates}
-            className={`flex items-center gap-1.5 px-3 py-1.5 border text-[10px] font-bold rounded-lg cursor-pointer transition-colors shadow ${
-              updateStatus === 'ready'
-                ? 'bg-emerald-700 border-emerald-500 text-white hover:bg-emerald-600 animate-pulse'
-                : updateStatus === 'available'
-                ? 'bg-amber-700/80 border-amber-500 text-white hover:bg-amber-600'
-                : updateStatus === 'downloading'
-                ? 'bg-sky-900/60 border-sky-700 text-sky-300 cursor-not-allowed'
-                : 'bg-rose-950/40 border-rose-800/80 hover:bg-rose-900/60 text-rose-400 hover:text-white'
-            }`}
-            title="アプリの更新を確認します"
-            disabled={updateStatus === 'downloading' || updateStatus === 'checking'}
-          >
-            <RefreshCw className={`w-3 h-3 ${
-              updateStatus === 'checking' || updateStatus === 'downloading'
-                ? 'animate-spin text-sky-400'
-                : updateStatus === 'ready' ? 'text-emerald-300'
-                : 'text-rose-500'
-            }`} />
-            {updateStatus === 'idle' && 'アップデートを確認'}
-            {updateStatus === 'checking' && '確認中...'}
-            {updateStatus === 'not-available' && '最新版です'}
-            {updateStatus === 'available' && `v${updateInfo?.version}に更新する`}
-            {updateStatus === 'downloading' && `ダウンロード中 ${updateProgress}%`}
-            {updateStatus === 'ready' && '再起動して適用'}
-          </button>
+          {/* Update button: ONLY show on Desktop Electron app */}
+          {typeof window !== 'undefined' && !!(window as any).electronAPI && (
+            <button
+              onClick={handleCheckForUpdates}
+              className={`flex items-center gap-1 px-2 py-1 border text-[9px] font-bold rounded-lg cursor-pointer transition-colors shadow ${
+                updateStatus === 'ready'
+                  ? 'bg-emerald-700 border-emerald-500 text-white hover:bg-emerald-600 animate-pulse'
+                  : updateStatus === 'available'
+                  ? 'bg-amber-700/80 border-amber-500 text-white hover:bg-amber-600'
+                  : updateStatus === 'downloading'
+                  ? 'bg-sky-900/60 border-sky-700 text-sky-300 cursor-not-allowed'
+                  : 'bg-rose-950/40 border-rose-800/80 hover:bg-rose-900/60 text-rose-400 hover:text-white'
+              }`}
+              title="アプリの更新を確認します"
+              disabled={updateStatus === 'downloading' || updateStatus === 'checking'}
+            >
+              <RefreshCw className={`w-2.5 h-2.5 ${
+                updateStatus === 'checking' || updateStatus === 'downloading'
+                  ? 'animate-spin text-sky-400'
+                  : updateStatus === 'ready' ? 'text-emerald-300'
+                  : 'text-rose-500'
+              }`} />
+              {updateStatus === 'idle' && (appLanguage === 'en' ? 'Check Updates' : '更新確認')}
+              {updateStatus === 'checking' && '確認中...'}
+              {updateStatus === 'not-available' && '最新版です'}
+              {updateStatus === 'available' && `v${updateInfo?.version}更新`}
+              {updateStatus === 'downloading' && `${updateProgress}%`}
+              {updateStatus === 'ready' && '適用して再起動'}
+            </button>
+          )}
 
-          {/* User profile dropdown / logout */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-[10px]">
-            <span className="font-bold text-zinc-400">👤 {usersDb[currentUser]?.name || currentUser}</span>
+          {/* User profile & Settings */}
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-[9px] shrink-0">
+            <span className="font-bold text-zinc-300 truncate max-w-[80px] sm:max-w-[120px]">
+              👤 {usersDb[currentUser]?.name || currentUser}
+            </span>
+
+            {/* ⚙️ App Settings button */}
+            <button
+              onClick={() => {
+                setSettingsTab('password');
+                setIsSettingsModalOpen(true);
+              }}
+              className="flex items-center gap-0.5 bg-zinc-800 hover:bg-zinc-700 text-[9px] font-bold text-zinc-300 hover:text-white px-1.5 py-0.5 rounded cursor-pointer transition-colors border border-zinc-750"
+              title="設定・パスワード変更・お問い合わせを開きます"
+            >
+              ⚙️ {appLanguage === 'en' ? 'Settings' : '設定'}
+            </button>
+
             {currentUser === 'admin' && (
               <button
                 onClick={() => setShowAdminPanel(true)}
-                className="flex items-center gap-1 bg-emerald-700/80 hover:bg-emerald-600 text-[9px] font-bold text-white px-2 py-0.5 rounded cursor-pointer transition-colors"
+                className="flex items-center gap-1 bg-emerald-700/80 hover:bg-emerald-600 text-[9px] font-bold text-white px-1.5 py-0.5 rounded cursor-pointer transition-colors"
                 title="アカウント契約・ライセンス管理を開きます"
               >
                 <Users className="w-2.5 h-2.5" />
-                管理
+                {appLanguage === 'en' ? 'Admin' : '管理'}
               </button>
             )}
+
             <button
               onClick={() => {
                 window.localStorage.removeItem('sportscode_current_user');
@@ -3420,14 +4914,82 @@ function App() {
                 channelRef.current?.postMessage({ type: 'SYNC_USER_LOGGED_OUT' });
                 window.location.reload();
               }}
-              className="font-black text-rose-400 hover:text-rose-300 ml-1 hover:underline cursor-pointer bg-transparent border-0 p-0"
-              title="ログアウトしてユーザー選択に戻ります"
+              className="font-black text-rose-400 hover:text-rose-300 ml-0.5 hover:underline cursor-pointer bg-transparent border-0 p-0 text-[9px]"
+              title="ログアウトします"
             >
-              ログアウト
+              {appLanguage === 'en' ? 'Logout' : 'ログアウト'}
             </button>
           </div>
         </div>
       </header>
+
+      {/* 🔑 自身のパスワード変更モーダル (一時パスワードでのログイン時、またはヘッダーボタンより動起) */}
+      {showPasswordChangeModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4 relative">
+            <div>
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <span className="text-emerald-400">🔑</span> パスワードの設定・変更
+              </h3>
+              <p className="text-[10px] text-zinc-400 mt-1">
+                {window.localStorage.getItem('sportscode_logged_in_with_temp') === 'true'
+                  ? '⚠️ 一時パスワードでログインされています。セキュリティのため、ご希望の新しい本パスワードを設定してください。'
+                  : '新しいパスワードを入力して更新してください。'}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-zinc-400">新しいパスワード</label>
+                <input
+                  type="password"
+                  placeholder="新しいパスワードを入力"
+                  value={changeNewPass}
+                  onChange={(e) => setChangeNewPass(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-zinc-400">確認のため再入力</label>
+                <input
+                  type="password"
+                  placeholder="もう一度入力"
+                  value={changeConfirmPass}
+                  onChange={(e) => setChangeConfirmPass(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                />
+              </div>
+
+              {changePassError && (
+                <p className="text-[10px] text-rose-400 font-bold bg-rose-950/30 border border-rose-900/30 p-2 rounded-lg">
+                  ⚠️ {changePassError}
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                {window.localStorage.getItem('sportscode_logged_in_with_temp') !== 'true' && (
+                  <button
+                    onClick={() => {
+                      setShowPasswordChangeModal(false);
+                      setChangePassError(null);
+                    }}
+                    className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    キャンセル
+                  </button>
+                )}
+                <button
+                  onClick={handleChangeOwnPassword}
+                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow cursor-pointer"
+                >
+                  保存して更新
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. SHARED PERSISTENT VIDEO CONTAINER (Never unmounted, prevents black screen/reset bugs) */}
       {videoUrl && (
@@ -3463,6 +5025,7 @@ function App() {
                   
                   // 1. Loop preview handler if active preview clip is playing
                   if (activePreviewClip) {
+                    setNowPlayingClipId(activePreviewClip.id);
                     const video = videoPlayerRef.current?.getVideoElement();
                     if (video && time >= activePreviewClip.endTime) {
                       video.pause();
@@ -3485,11 +5048,13 @@ function App() {
                       const currentClip = orderedSelectedClips.find((clip: TaggedEvent) => time >= clip.startTime - 0.1 && time <= clip.endTime);
 
                       if (currentClip) {
+                        setNowPlayingClipId(currentClip.id);
                         // If current clip ends, skip to next clip's startTime immediately
                         if (time >= currentClip.endTime - 0.05) {
                           const nextIdx = orderedSelectedClips.indexOf(currentClip) + 1;
                           if (nextIdx < orderedSelectedClips.length) {
                             const nextClip = orderedSelectedClips[nextIdx];
+                            setNowPlayingClipId(nextClip.id);
                             try {
                               if (video.readyState >= 1) {
                                 video.currentTime = nextClip.startTime;
@@ -3498,6 +5063,7 @@ function App() {
                           } else {
                             // End of playlist: pause and rewind to first selected clip
                             video.pause();
+                            setNowPlayingClipId(null);
                             try {
                               if (video.readyState >= 1) {
                                 video.currentTime = orderedSelectedClips[0].startTime;
@@ -3509,6 +5075,7 @@ function App() {
                         // If currently playing in an unselected gap, skip forward to the next future selected clip
                         const nextClip = orderedSelectedClips.find((clip: TaggedEvent) => clip.startTime > time);
                         if (nextClip) {
+                          setNowPlayingClipId(nextClip.id);
                           try {
                             if (video.readyState >= 1) {
                               video.currentTime = nextClip.startTime;
@@ -3517,6 +5084,7 @@ function App() {
                         } else {
                           // No future selected clips: pause and rewind to the very first one
                           video.pause();
+                          setNowPlayingClipId(null);
                           try {
                             if (video.readyState >= 1) {
                               video.currentTime = orderedSelectedClips[0].startTime;
@@ -3524,11 +5092,70 @@ function App() {
                           } catch {}
                         }
                       }
+                    } else {
+                      setNowPlayingClipId(null);
                     }
+                  } else {
+                    setNowPlayingClipId(null);
                   }
                 }}
               />
             </div>
+
+            {/* Live Tagging Timer Panel (When no video file is loaded) */}
+            {!videoUrl && (
+              <div className="bg-zinc-900/90 border border-emerald-800/60 p-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-950 border border-emerald-700/80 rounded-xl text-emerald-400 font-extrabold text-lg">
+                    ⏱️
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-white flex items-center gap-2">
+                      動画なし・ライブ現地タギングモード
+                      <span className="px-2 py-0.5 bg-emerald-950 border border-emerald-800 text-emerald-400 text-[8px] font-bold rounded-full animate-pulse">
+                        LIVE READY
+                      </span>
+                    </h4>
+                    <p className="text-[10px] text-zinc-400">
+                      動画ファイルが無くても、リアルタイム経過時間でタイムライン打刻・記録が可能です
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-right font-mono">
+                    <span className="text-2xl font-black text-emerald-400">
+                      {formatTime(liveTimerSeconds)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsLiveTimerRunning(!isLiveTimerRunning)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold cursor-pointer transition-all shadow active:scale-95 ${
+                        isLiveTimerRunning
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                    >
+                      {isLiveTimerRunning ? '⏸️ 一時停止' : '▶️ ライブタイマースタート'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLiveTimerRunning(false);
+                        setLiveTimerSeconds(0);
+                      }}
+                      className="px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
+                      title="経過時間を00:00にリセット"
+                    >
+                      ↺ リセット
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Clip Organizer Tools panel */}
             {currentView === 'organizer' && activeOrganizerTab === 'organizer' && (
@@ -3645,6 +5272,7 @@ function App() {
           onUpdateSelectedIds={setSelectedIds}
           exportProgress={exportProgress}
           activePreviewClip={activePreviewClip}
+          nowPlayingClipId={nowPlayingClipId}
           onPreviewClip={handlePreviewClip}
           onClearPreviewClip={() => {
             setActivePreviewClip(null);
@@ -3655,6 +5283,25 @@ function App() {
                 video.currentTime = prePreviewTime;
                 setCurrentTime(prePreviewTime);
                 setPrePreviewTime(null);
+              }
+            }
+          }}
+          onSetTimePoint={(eventId, type) => {
+            const video = videoPlayerRef.current?.getVideoElement();
+            if (video) {
+              const cur = Number(video.currentTime.toFixed(2));
+              const updated = events.map(ev => {
+                if (ev.id !== eventId) return ev;
+                if (type === 'start') {
+                  return { ...ev, startTime: Math.min(cur, ev.endTime - 0.2) };
+                } else {
+                  return { ...ev, endTime: Math.max(cur, ev.startTime + 0.2) };
+                }
+              });
+              setEvents(updated);
+              if (activePreviewClip && activePreviewClip.id === eventId) {
+                const found = updated.find(ev => ev.id === eventId);
+                if (found) setActivePreviewClip(found);
               }
             }
           }}
@@ -3672,9 +5319,273 @@ function App() {
           teamBName={teamBName}
           currentUser={currentUser}
         />
+      ) : currentView === 'live_tagger' ? (
+        /* ⏱️ 動画なし・超軽量ライブタギング専用画面 (Memory Leak & Crash FREE) */
+        <main className="flex-1 p-4 lg:p-6 max-w-[1700px] mx-auto w-full flex flex-col gap-5 min-w-0">
+          {/* Header Timer Bar */}
+          <div className="bg-gradient-to-r from-zinc-900 via-zinc-950 to-zinc-900 border border-amber-900/50 rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 bg-amber-950/80 border border-amber-800/80 rounded-2xl text-amber-400 font-extrabold text-2xl shadow">
+                ⏱️
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  完全動画なし・超軽量ライブタギング
+                  <span className="px-2.5 py-0.5 bg-emerald-950 border border-emerald-800 text-emerald-400 text-[9px] font-black rounded-full animate-pulse">
+                    CRASH FREE LIVE MODE
+                  </span>
+                </h3>
+                <p className="text-[10px] text-amber-300 font-bold mt-0.5">
+                  動画プレイヤー非読み込みのためメモリー消費ゼロ！スマホやiPad、Web版でも絶対にクラッシュしません。
+                </p>
+              </div>
+            </div>
+
+            {/* Timer Controls */}
+            <div className="flex items-center gap-4">
+              <div className="text-right font-mono bg-black/60 border border-zinc-800 px-4 py-1.5 rounded-xl shadow-inner">
+                <span className="text-3xl font-black text-amber-400">
+                  {formatTime(liveTimerSeconds)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsLiveTimerRunning(!isLiveTimerRunning)}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black cursor-pointer transition-all shadow-lg active:scale-95 flex items-center gap-1.5 ${
+                    isLiveTimerRunning
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950'
+                  }`}
+                >
+                  {isLiveTimerRunning ? '⏸️ タイマー一時停止' : '▶️ ライブタイマースタート'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLiveTimerRunning(false);
+                    setLiveTimerSeconds(0);
+                  }}
+                  className="px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold cursor-pointer"
+                  title="タイマーを00:00にリセット"
+                >
+                  ↺ リセット
+                </button>
+                
+                {/* Download / Export Data Buttons */}
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  className="px-3 py-2.5 bg-sky-700 hover:bg-sky-600 text-white rounded-xl text-xs font-extrabold cursor-pointer transition-all shadow flex items-center gap-1 active:scale-95 border border-sky-500/50"
+                  title="全打刻データをExcel/スプレッドシート用CSVファイルとして保存・ダウンロード"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  CSV保存
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportJSON}
+                  className="px-3 py-2.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded-xl text-xs font-extrabold cursor-pointer transition-all shadow flex items-center gap-1 active:scale-95 border border-indigo-500/50"
+                  title="全打刻データをJSON形式でバックアップ保存"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  JSON保存
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportXML}
+                  className="px-3 py-2.5 bg-purple-700 hover:bg-purple-600 text-white rounded-xl text-xs font-extrabold cursor-pointer transition-all shadow flex items-center gap-1 active:scale-95 border border-purple-500/50"
+                  title="Sportscode互換のXMLフォーマットで保存"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  XML保存
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Visual Timeline Section for Live Tagger (コードウィンドウの上に配置) */}
+          <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-850 shadow-xl flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black text-white flex items-center gap-2">
+                <span>📊 ビジュアルタイムライン (リアルタイム打刻ログ)</span>
+                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-950 border border-emerald-800 px-2 py-0.5 rounded-full">
+                  LIVE EDITABLE
+                </span>
+              </h4>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsLiveRosterOpen(!isLiveRosterOpen)}
+                  className="px-2.5 py-1 bg-amber-950/80 border border-amber-800/80 hover:bg-amber-900 text-amber-300 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer shadow"
+                >
+                  <Users className="w-3 h-3" /> {isLiveRosterOpen ? '✕ 選手管理を閉じる' : '👥 選手・チーム登録'}
+                </button>
+                <span className="text-[9.5px] text-zinc-400">
+                  タイマーを止めずに打刻タグをリアルタイム編集・削除・微調整可能
+                </span>
+              </div>
+            </div>
+
+            {/* Inline Player & Roster Manager Panel for Live Tagger */}
+            {isLiveRosterOpen && (
+              <div className="bg-zinc-900/90 border border-amber-900/60 rounded-xl p-4 mt-1 animate-fadeIn">
+                <h4 className="text-xs font-black text-amber-400 mb-3 flex items-center gap-1.5">
+                  <Users className="w-4 h-4" /> チーム＆選手名簿の登録・編集
+                </h4>
+                <PlayerManager
+                  players={players}
+                  activePlayerId={activePlayerId}
+                  onSelectPlayer={setActivePlayerId}
+                  onAddPlayer={handleAddPlayer}
+                  onDeletePlayer={handleDeletePlayer}
+                  teamAName={teamAName}
+                  teamBName={teamBName}
+                  onUpdateTeamAName={handleUpdateTeamAName}
+                  onUpdateTeamBName={handleUpdateTeamBName}
+                  teamAColor={teamAColor}
+                  teamBColor={teamBColor}
+                  onUpdateTeamAColor={(val) => { setTeamAColor(val); channelRef.current?.postMessage({ type: 'UPDATE_TEAMA_COLOR', value: val }); }}
+                  onUpdateTeamBColor={(val) => { setTeamBColor(val); channelRef.current?.postMessage({ type: 'UPDATE_TEAMB_COLOR', value: val }); }}
+                  onImportRoster={handleImportRoster}
+                  onTogglePlayerPosition={handleTogglePlayerPosition}
+                  onClearRoster={handleClearRoster}
+                  onUpdatePlayerThrows={handleUpdatePlayerThrows}
+                  onUpdatePlayerBats={handleUpdatePlayerBats}
+                />
+              </div>
+            )}
+
+            <EventTimeline
+              events={events}
+              players={players}
+              videoDuration={Math.max(
+                events.reduce((mx, e) => Math.max(mx, e.endTime), 0) + 30,
+                liveTimerSeconds + 30,
+                60
+              )}
+              currentVideoTime={liveTimerSeconds}
+              onSeek={(t) => setLiveTimerSeconds(t)}
+              onDeleteEvent={handleDeleteSelectedEvent}
+              onContextMenu={(e, eventId, activeGroup) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, eventId, activeGroup });
+              }}
+              selectedEventId={selectedEventId}
+              onSelectEvent={setSelectedEventId}
+            />
+          </div>
+
+          {/* Direct Code Window Controls (タイムラインの下に配置) */}
+          <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-850 shadow-xl">
+            <CodeWindowDesigner
+              buttons={buttons}
+              onAddButton={handleAddButton}
+              onUpdateButton={handleUpdateButton}
+              onDeleteButton={handleDeleteButton}
+              onUpdateButtons={handleUpdateButtons}
+              onLoadTemplate={handleLoadTemplate}
+              onTriggerButton={handleTriggerButtonDirectly}
+              activeEventName={activeEventName}
+              preSelectedLabels={preSelectedLabels}
+
+              players={players}
+              onUpdatePlayerHand={handleUpdatePlayerHand}
+              onUpdatePlayerThrows={handleUpdatePlayerThrows}
+              onUpdatePlayerBats={handleUpdatePlayerBats}
+              activePlayerId={activePlayerId}
+              onSelectPlayer={setActivePlayerId}
+
+              pitchSpeedInput={pitchSpeedInput}
+              onUpdatePitchSpeedInput={(val) => {
+                setPitchSpeedInput(val);
+                const formattedVal = val ? (val.endsWith('km/h') ? val : `${val}km/h`) : '';
+                const targetId = selectedEventId || activeEventId;
+                if (targetId && formattedVal) {
+                  setEvents(prevEvents =>
+                    prevEvents.map(ev => {
+                      if (ev.id === targetId) {
+                        return {
+                          ...ev,
+                          labels: {
+                            ...ev.labels,
+                            '球速': formattedVal,
+                            'Pitch Speed': formattedVal,
+                            'PITCH_SPEED': formattedVal
+                          }
+                        };
+                      }
+                      return ev;
+                    })
+                  );
+                }
+              }}
+
+              balls={balls}
+              strikes={strikes}
+              outs={outs}
+              onIncrementBall={() => setBalls(prev => (prev + 1) % 4)}
+              onIncrementStrike={() => setStrikes(prev => (prev + 1) % 3)}
+              onIncrementOut={() => setOuts(prev => (prev + 1) % 3)}
+              onResetScoreboard={() => { setBalls(0); setStrikes(0); setOuts(0); }}
+
+              pitcherA={pitcherA}
+              onUpdatePitcherA={setPitcherA}
+              pitcherB={pitcherB}
+              onUpdatePitcherB={setPitcherB}
+              defense={inningHalf === 'top' ? defenseB : defenseA}
+              onUpdateDefense={val => inningHalf === 'top' ? setDefenseB(val) : setDefenseA(val)}
+              selectedCourse={selectedCourse}
+              onSelectCourse={setSelectedCourse}
+              plottedHit={plottedHit}
+              onUpdatePlottedHit={setPlottedHit}
+              coursePerspective={coursePerspective}
+              onTogglePerspective={() => setCoursePerspective(prev => prev === 'pitcher' ? 'catcher' : 'pitcher')}
+              hotkeysEnabled={hotkeysEnabled}
+              onToggleHotkeys={() => setHotkeysEnabled(!hotkeysEnabled)}
+
+              teamAName={teamAName}
+              teamBName={teamBName}
+
+              inningNum={inningNum}
+              onUpdateInningNum={setInningNum}
+              inningHalf={inningHalf}
+              onUpdateInningHalf={setInningHalf}
+              runner1BId={runner1BId}
+              onUpdateRunner1BId={setRunner1BId}
+              runner2BId={runner2BId}
+              onUpdateRunner2BId={setRunner2BId}
+              runner3BId={runner3BId}
+              onUpdateRunner3BId={setRunner3BId}
+
+              catcherId={inningHalf === 'top' ? catcherIdB : catcherIdA}
+              onUpdateCatcherId={id => inningHalf === 'top' ? setCatcherIdB(id) : setCatcherIdA(id)}
+              inf1Id={inningHalf === 'top' ? inf1IdB : inf1IdA}
+              onUpdateInf1Id={id => inningHalf === 'top' ? setInf1IdB(id) : setInf1IdA(id)}
+              inf2Id={inningHalf === 'top' ? inf2IdB : inf2IdA}
+              onUpdateInf2Id={id => inningHalf === 'top' ? setInf2IdB(id) : setInf2IdA(id)}
+              inf3Id={inningHalf === 'top' ? inf3IdB : inf3IdA}
+              onUpdateInf3Id={id => inningHalf === 'top' ? setInf3IdB(id) : setInf3IdA(id)}
+              inf4Id={inningHalf === 'top' ? inf4IdB : inf4IdA}
+              onUpdateInf4Id={id => inningHalf === 'top' ? setInf4IdB(id) : setInf4IdA(id)}
+
+              lfId={inningHalf === 'top' ? lfIdB : lfIdA}
+              onUpdateLfId={id => inningHalf === 'top' ? setLfIdB(id) : setLfIdA(id)}
+              cfId={inningHalf === 'top' ? cfIdB : cfIdA}
+              onUpdateCfId={id => inningHalf === 'top' ? setCfIdB(id) : setCfIdA(id)}
+              rfId={inningHalf === 'top' ? rfIdB : rfIdA}
+              onUpdateRfId={id => inningHalf === 'top' ? setRfIdB(id) : setRfIdA(id)}
+
+              dhId={inningHalf === 'top' ? dhIdB : dhIdA}
+              onUpdateDhId={id => inningHalf === 'top' ? setDhIdB(id) : setDhIdA(id)}
+              onUpdatePlayerBattingOrder={handleUpdatePlayerBattingOrder}
+            />
+          </div>
+        </main>
       ) : (
         /* RENDER TAGGER WORKSPACE VIEW */
-        <main className="flex-1 p-4 lg:p-6 max-w-5xl mx-auto w-full flex flex-col gap-4 lg:gap-6 min-w-0">
+        <main className="flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto w-full flex flex-col gap-4 lg:gap-6 min-w-0 overflow-x-hidden">
 
           {/* Game Date Bar */}
           <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 shadow">
@@ -3720,6 +5631,17 @@ function App() {
             </h3>
             
             <div className="flex flex-wrap items-center gap-2 select-none">
+              {/* Batch Mass Delete Selected Tags Button */}
+              {timelineSelectedIds.size > 0 && (
+                <button
+                  onClick={handleBatchDeleteSelectedEvents}
+                  className="px-2.5 py-1 bg-rose-950/90 border border-rose-800 text-rose-300 hover:text-white hover:bg-rose-900 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer transition-all shadow shadow-rose-950/60 active:scale-95 animate-pulse"
+                  title="選択されている複数のタグを一括消去します"
+                >
+                  🗑️ 選択タグをまとめて削除 ({timelineSelectedIds.size}件)
+                </button>
+              )}
+
               {/* Zoom controls */}
               <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 gap-1.5 text-zinc-400">
                 <span className="text-[9px] font-bold">🔍 ズーム: {timelineZoom}%</span>
@@ -3780,12 +5702,65 @@ function App() {
 
           <div 
             ref={timelineScrollRef}
-            className="flex flex-col bg-zinc-950/45 p-1 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent"
+            onMouseDown={(e) => {
+              if (e.button !== 0) return;
+              const target = e.target as HTMLElement;
+              if (target.closest('.timeline-tag-block')) return;
+              const rect = timelineScrollRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const startX = e.clientX - rect.left + (timelineScrollRef.current?.scrollLeft || 0);
+              const startY = e.clientY - rect.top;
+              setIsBoxSelecting(true);
+              setBoxSelectRect({ startX, startY, currentX: startX, currentY: startY });
+              if (!e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                setTimelineSelectedIds(new Set());
+              }
+            }}
+            onMouseMove={(e) => {
+              if (!isBoxSelecting || !boxSelectRect || !timelineScrollRef.current) return;
+              const rect = timelineScrollRef.current.getBoundingClientRect();
+              const currentX = e.clientX - rect.left + (timelineScrollRef.current.scrollLeft || 0);
+              const currentY = e.clientY - rect.top;
+              setBoxSelectRect(prev => prev ? ({ ...prev, currentX, currentY }) : null);
+
+              const minX = Math.min(boxSelectRect.startX, currentX);
+              const maxX = Math.max(boxSelectRect.startX, currentX);
+              const totalD = Math.max(videoDuration, 60);
+              const scrollW = timelineScrollRef.current.scrollWidth;
+              const containerW = scrollW - 112;
+
+              const nextSelected = new Set(timelineSelectedIds);
+              events.forEach(ev => {
+                const leftPx = 112 + (ev.startTime / totalD) * containerW;
+                const rightPx = 112 + (ev.endTime / totalD) * containerW;
+                if (rightPx >= minX && leftPx <= maxX) {
+                  nextSelected.add(ev.id);
+                }
+              });
+              setTimelineSelectedIds(nextSelected);
+            }}
+            onMouseUp={() => {
+              setIsBoxSelecting(false);
+              setBoxSelectRect(null);
+            }}
+            className="flex flex-col bg-zinc-950/45 p-1 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent relative"
           >
             <div 
               className="min-w-full flex flex-col relative h-fit"
               style={{ width: `${timelineZoom}%` }}
             >
+              {/* Rubberband Drag Box Selection Overlay */}
+              {isBoxSelecting && boxSelectRect && (
+                <div
+                  className="absolute border border-emerald-400 bg-emerald-500/20 z-40 pointer-events-none rounded shadow-lg shadow-emerald-950/50"
+                  style={{
+                    left: `${Math.min(boxSelectRect.startX, boxSelectRect.currentX)}px`,
+                    top: `${Math.min(boxSelectRect.startY, boxSelectRect.currentY)}px`,
+                    width: `${Math.abs(boxSelectRect.currentX - boxSelectRect.startX)}px`,
+                    height: `${Math.abs(boxSelectRect.currentY - boxSelectRect.startY)}px`
+                  }}
+                />
+              )}
               {/* Playhead line (spans all tracks including Ruler) */}
               <div 
                 className="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-30 pointer-events-none transition-all duration-75"
@@ -3846,9 +5821,9 @@ function App() {
               <div className="relative flex flex-col w-full">
 
               {(() => {
-                const presentActionNames = Array.from(new Set(events.map(e => e.labels.Pitcher || e.actionName)));
+                const presentActionNames = Array.from(new Set(events.map(e => e.actionName)));
                 if (presentActionNames.length === 0) {
-                  presentActionNames.push(activePresetName === 'baseball' ? 'Pitch (投球)' : 'Attack (攻撃)');
+                  presentActionNames.push(activePresetName === 'baseball' ? 'Pitch (投球)' : 'Pitch');
                 }
 
                 // Resolve timeline sorting order
@@ -3860,7 +5835,7 @@ function App() {
                 });
 
                 return tracks.map((trackName) => {
-                  const trackEvents = events.filter(e => (e.labels.Pitcher || e.actionName) === trackName);
+                  const trackEvents = events.filter(e => e.actionName === trackName);
                   const totalD = Math.max(videoDuration, 60);
 
                   const player = players.find(p => p.name === trackName);
@@ -3965,7 +5940,7 @@ function App() {
                                 setSelectedEventId(ev.id);
 
                                 const next = new Set(timelineSelectedIds);
-                                if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                                if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) {
                                   if (next.has(ev.id)) next.delete(ev.id);
                                   else next.add(ev.id);
                                 } else {
@@ -3986,7 +5961,7 @@ function App() {
                                 setSelectedEventId(ev.id);
                                 setContextMenu({ x: e.clientX, y: e.clientY, eventId: ev.id });
                               }}
-                              className={`absolute h-7 top-1 rounded border text-[8px] font-extrabold text-white flex items-center justify-center px-1 shadow cursor-pointer transition-all select-none overflow-hidden text-ellipsis whitespace-nowrap ${
+                              className={`timeline-tag-block absolute h-7 top-1 rounded border text-[8px] font-extrabold text-white flex items-center justify-center px-1 shadow cursor-pointer transition-all select-none overflow-hidden text-ellipsis whitespace-nowrap ${
                                 isSelected
                                   ? 'bg-amber-500 border-amber-300 ring-2 ring-amber-400 font-black shadow-lg shadow-amber-950/80 z-20 scale-[1.04]'
                                   : defaultBlockColor
@@ -4148,73 +6123,6 @@ function App() {
             onUpdatePlayerBats={handleUpdatePlayerBats}
           />
         </div>
-
-        {/* RIGHT-CLICK TAGGING CONTEXT MENU OVERLAY */}
-        {contextMenu && (() => {
-          const targetEv = events.find(e => e.id === contextMenu.eventId);
-          if (!targetEv) return null;
-
-          return (
-            <div 
-              style={{ top: `${Math.min(contextMenu.y, window.innerHeight - 320)}px`, left: `${Math.min(contextMenu.x, window.innerWidth - 220)}px` }}
-              className="fixed z-[1000] bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl p-1.5 text-xs w-48 text-zinc-200 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100 select-none"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-2.5 py-1.5 border-b border-zinc-800 flex items-center justify-between text-[10px] text-zinc-400 font-bold">
-                <span>タグ編集 ({formatTime(targetEv.timestamp)})</span>
-                <button onClick={() => setContextMenu(null)} className="text-zinc-500 hover:text-white">✕</button>
-              </div>
-
-              {Object.entries(TAG_GROUPS).map(([groupName, tagList]) => {
-                const currentTagVal = targetEv.labels[groupName] || targetEv.labels[groupName.toLowerCase()] || '';
-
-                return (
-                  <div 
-                    key={groupName}
-                    className="relative group/sub"
-                  >
-                    <div className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer text-xs transition-colors hover:bg-zinc-800 ${currentTagVal ? 'text-sky-300 font-bold' : 'text-zinc-300'}`}>
-                      <span>{groupName}</span>
-                      <span className="text-[10px] text-zinc-500">▶</span>
-                    </div>
-
-                    {/* Submenu on hover */}
-                    <div className="hidden group-hover/sub:flex flex-col absolute left-full top-0 ml-1 bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl p-1 text-xs min-w-[140px] max-h-64 overflow-y-auto z-[1010] gap-0.5">
-                      {tagList.map(tagName => {
-                        const isChecked = currentTagVal === tagName || currentTagVal.includes(tagName);
-
-                        return (
-                          <div
-                            key={tagName}
-                            onClick={() => {
-                              handleToggleEventTag(contextMenu.eventId, groupName, tagName);
-                            }}
-                            className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer text-xs transition-colors hover:bg-zinc-800 ${
-                              isChecked ? 'bg-sky-950/80 text-sky-300 font-black' : 'text-zinc-300'
-                            }`}
-                          >
-                            <span>{tagName}</span>
-                            {isChecked && <span className="text-emerald-400 font-extrabold text-sm">✓</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="border-t border-zinc-800 pt-1 mt-0.5">
-                <div
-                  onClick={() => handleDeleteSelectedEvent(contextMenu.eventId)}
-                  className="px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer text-xs text-red-400 hover:bg-red-950/60 hover:text-red-300 font-bold transition-colors"
-                >
-                  <span>イベントを削除</span>
-                  <span>🗑️</span>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
         </main>
       )}
 
@@ -4308,15 +6216,298 @@ function App() {
         </div>
       )}
 
+      {/* ⚙️ アプリ設定・アカウント管理モーダル */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl flex flex-col overflow-hidden relative">
+            {/* Modal Header & Navigation Tabs */}
+            <div className="px-5 py-3.5 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <span className="text-emerald-400">⚙️</span> {appLanguage === 'en' ? 'App Settings' : 'アプリ設定・アカウント管理'}
+              </h3>
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="text-zinc-400 hover:text-white text-xs font-bold px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg cursor-pointer transition-all"
+              >
+                {appLanguage === 'en' ? 'Close' : '閉じる'}
+              </button>
+            </div>
+
+            {/* Sub Tabs Navigation */}
+            <div className="flex border-b border-zinc-800 bg-zinc-950/30 px-5 pt-2 gap-1 text-xs font-bold select-none overflow-x-auto">
+              <button
+                onClick={() => setSettingsTab('password')}
+                className={`px-3 py-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                  settingsTab === 'password'
+                    ? 'border-emerald-500 text-emerald-400 font-black'
+                    : 'border-transparent text-zinc-400 hover:text-white'
+                }`}
+              >
+                🔑 {appLanguage === 'en' ? 'Password' : 'パスワード変更'}
+              </button>
+              <button
+                onClick={() => setSettingsTab('language')}
+                className={`px-3 py-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                  settingsTab === 'language'
+                    ? 'border-emerald-500 text-emerald-400 font-black'
+                    : 'border-transparent text-zinc-400 hover:text-white'
+                }`}
+              >
+                🌐 {appLanguage === 'en' ? 'Language' : 'アプリ言語'}
+              </button>
+              <button
+                onClick={() => setSettingsTab('support')}
+                className={`px-3 py-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                  settingsTab === 'support'
+                    ? 'border-emerald-500 text-emerald-400 font-black'
+                    : 'border-transparent text-zinc-400 hover:text-white'
+                }`}
+              >
+                📩 {appLanguage === 'en' ? 'Support' : 'お問い合わせ'}
+              </button>
+              <button
+                onClick={() => setSettingsTab('about')}
+                className={`px-3 py-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                  settingsTab === 'about'
+                    ? 'border-emerald-500 text-emerald-400 font-black'
+                    : 'border-transparent text-zinc-400 hover:text-white'
+                }`}
+              >
+                ℹ️ {appLanguage === 'en' ? 'About' : 'アプリ情報'}
+              </button>
+            </div>
+
+            {/* Modal Body Content */}
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
+              {/* Tab 1: Password Change */}
+              {settingsTab === 'password' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-white mb-1">🔑 パスワードの変更</h4>
+                    <p className="text-[10px] text-zinc-400">ログイン中のアカウント（{currentUser}）の新しいパスワードを入力してください。</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-zinc-400">新しいパスワード</label>
+                      <input
+                        type="password"
+                        placeholder="新しいパスワードを入力"
+                        value={changeNewPass}
+                        onChange={(e) => setChangeNewPass(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-zinc-400">確認のため再入力 (2回目)</label>
+                      <input
+                        type="password"
+                        placeholder="もう一度パスワードを入力"
+                        value={changeConfirmPass}
+                        onChange={(e) => setChangeConfirmPass(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                      />
+                    </div>
+
+                    {changePassError && (
+                      <p className="text-[10px] text-rose-400 font-bold bg-rose-950/30 border border-rose-900/30 p-2 rounded-lg">
+                        ⚠️ {changePassError}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={handleChangeOwnPassword}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center mt-2"
+                    >
+                      パスワードを変更して保存
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Language Settings */}
+              {settingsTab === 'language' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-white mb-1">🌐 {appLanguage === 'en' ? 'App Display Language' : '表示言語の設定'}</h4>
+                    <p className="text-[10px] text-zinc-400">アプリケーション内のボタンやメニューの表示言語を選択します。</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => {
+                        setAppLanguage('ja');
+                        window.localStorage.setItem('sportscode_app_language', 'ja');
+                      }}
+                      className={`p-4 rounded-xl border text-center font-bold flex flex-col items-center gap-2 cursor-pointer transition-all ${
+                        appLanguage === 'ja'
+                          ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-lg'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                      }`}
+                    >
+                      <span className="text-2xl">🇯🇵</span>
+                      <span className="text-xs font-black">日本語 (Japanese)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setAppLanguage('en');
+                        window.localStorage.setItem('sportscode_app_language', 'en');
+                      }}
+                      className={`p-4 rounded-xl border text-center font-bold flex flex-col items-center gap-2 cursor-pointer transition-all ${
+                        appLanguage === 'en'
+                          ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-lg'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                      }`}
+                    >
+                      <span className="text-2xl">🇺🇸</span>
+                      <span className="text-xs font-black">English</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Contact & Support (In-App Messaging) */}
+              {settingsTab === 'support' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-white mb-1">📩 サポート＆お問い合わせ窓口 (アプリ内完結)</h4>
+                    <p className="text-[10px] text-zinc-400">ご質問・不具合報告・機能要望をアプリから直接送信できます。管理者からの返信もここに届きます。</p>
+                  </div>
+
+                  {/* Send New Inquiry Form */}
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-3">
+                    <label className="text-[10px] font-bold text-zinc-300 block">💬 お問い合わせ本文を入力</label>
+                    <textarea
+                      rows={3}
+                      placeholder="操作方法の質問、不具合の報告、追加機能のご要望などをお気軽にご記入ください"
+                      value={userSupportMessageText}
+                      onChange={(e) => setUserSupportMessageText(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-sans"
+                    />
+                    <button
+                      onClick={handleSendUserSupportMessage}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow transition-all cursor-pointer text-center"
+                    >
+                      送信する
+                    </button>
+                  </div>
+
+                  {/* Sent History & Admin Replies */}
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-zinc-400 text-[11px] flex items-center justify-between">
+                      <span>📜 お問い合わせ・返信履歴</span>
+                      <button
+                        onClick={fetchUserSupportHistory}
+                        className="text-[9px] text-sky-400 hover:underline cursor-pointer"
+                      >
+                        🔄 更新
+                      </button>
+                    </h5>
+
+                    {userSupportHistory.length === 0 ? (
+                      <p className="text-center py-4 text-[10px] text-zinc-600 border border-zinc-900 rounded-lg bg-zinc-950/40">
+                        まだお問い合わせ履歴はありません。
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-44 overflow-y-auto">
+                        {userSupportHistory.map((msg) => (
+                          <div key={msg.id} className="bg-zinc-950/80 border border-zinc-850 p-3 rounded-xl space-y-2">
+                            <div className="flex justify-between items-center text-[9px]">
+                              <span className="text-zinc-400 font-bold">{new Date(msg.created_at).toLocaleString('ja-JP')}</span>
+                              <span className={`px-1.5 py-0.5 rounded font-black ${
+                                msg.status === 'replied'
+                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                                  : 'bg-amber-950 text-amber-400 border border-amber-900'
+                              }`}>
+                                {msg.status === 'replied' ? '✅ 回答あり' : '⏳ 確認中'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-200 whitespace-pre-wrap">{msg.message}</p>
+                            
+                            {msg.reply && (
+                              <div className="mt-2 pt-2 border-t border-zinc-800/60 bg-emerald-950/20 p-2 rounded-lg border border-emerald-900/30">
+                                <p className="text-[9px] font-extrabold text-emerald-400 flex items-center gap-1 mb-1">
+                                  <span>💬</span> 管理者からの返信 ({msg.replied_at ? new Date(msg.replied_at).toLocaleString('ja-JP') : ''})
+                                </p>
+                                <p className="text-xs text-emerald-200 font-bold whitespace-pre-wrap">{msg.reply}</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: About App */}
+              {settingsTab === 'about' && (
+                <div className="space-y-4 text-center">
+                  <div className="mx-auto w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center text-xl shadow-lg">
+                    ⚾
+                  </div>
+                  <div>
+                    <h4 className="font-black text-white text-sm">SportsVideoAnalysis</h4>
+                    <p className="text-[10px] font-bold text-emerald-400 mt-0.5">Elite Edition v9.0</p>
+                    <p className="text-[10px] text-zinc-500 mt-2">© 2026 Sports analytics desktop logger.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 5. ADMINISTRATOR PANEL MODAL */}
       {showAdminPanel && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/40">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-500" />
-                <h3 className="text-sm font-extrabold text-white">ライセンス契約・アカウント管理（管理者）</h3>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
+            {/* Header with Tabs */}
+            <div className="px-6 py-3.5 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-sm font-extrabold text-white">管理者コントロール</h3>
+                </div>
+                <div className="flex items-center bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs font-bold">
+                  <button
+                    onClick={() => setAdminTab('accounts')}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                      adminTab === 'accounts' 
+                        ? 'bg-emerald-600 text-white shadow' 
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    🔑 登録アカウント一覧
+                  </button>
+                  <button
+                    onClick={() => { setAdminTab('logs'); fetchAdminAccessLogs(); }}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                      adminTab === 'logs' 
+                        ? 'bg-emerald-600 text-white shadow' 
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    📜 アクセス・操作ログ
+                  </button>
+                  <button
+                    onClick={() => { setAdminTab('inquiries'); fetchAdminSupportList(); }}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                      adminTab === 'inquiries' 
+                        ? 'bg-emerald-600 text-white shadow' 
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <span>📩 お問い合わせ受信・返信</span>
+                    {adminSupportList.filter(m => m.status === 'pending').length > 0 && (
+                      <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
+                        {adminSupportList.filter(m => m.status === 'pending').length}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
               <button 
                 onClick={() => setShowAdminPanel(false)}
@@ -4328,121 +6519,303 @@ function App() {
 
             {/* Content (Scrollable) */}
             <div className="p-6 overflow-y-auto flex-1 space-y-6">
-              {/* Account Creator Form */}
-              <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl space-y-4">
-                <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">➕ 新規チーム（アカウント）登録</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-zinc-500 font-bold">ユーザーID</label>
-                    <input
-                      type="text"
-                      placeholder="例: team_braves"
-                      value={newTeamId}
-                      onChange={(e) => setNewTeamId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                      className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
-                    />
+              {adminTab === 'accounts' ? (
+                <>
+                  {/* Account Creator Form */}
+                  <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl space-y-4">
+                    <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">➕ 新規チーム（アカウント）登録・更新</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-zinc-500 font-bold">ユーザーID</label>
+                        <input
+                          type="text"
+                          placeholder="例: Team_Braves"
+                          value={newTeamId}
+                          onChange={(e) => setNewTeamId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-zinc-500 font-bold">パスワード</label>
+                        <input
+                          type="text"
+                          placeholder="パスワード"
+                          value={newTeamPassword}
+                          onChange={(e) => setNewTeamPassword(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-zinc-500 font-bold">チーム表示名</label>
+                        <input
+                          type="text"
+                          placeholder="例: ブレーブス"
+                          value={newTeamName}
+                          onChange={(e) => setNewTeamName(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-zinc-500 font-bold">メールアドレス (復旧用)</label>
+                        <input
+                          type="email"
+                          placeholder="例: team@example.com"
+                          value={newTeamEmail}
+                          onChange={(e) => setNewTeamEmail(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleAdminCreateTeam}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center"
+                    >
+                      新しいアカウントを保存
+                    </button>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-zinc-500 font-bold">パスワード</label>
-                    <input
-                      type="text"
-                      placeholder="パスワード"
-                      value={newTeamPassword}
-                      onChange={(e) => setNewTeamPassword(e.target.value)}
-                      className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-zinc-500 font-bold">チーム表示名</label>
-                    <input
-                      type="text"
-                      placeholder="例: ブレーブス"
-                      value={newTeamName}
-                      onChange={(e) => setNewTeamName(e.target.value)}
-                      className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={handleAdminCreateTeam}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center"
-                >
-                  新しいアカウントを保存
-                </button>
-              </div>
 
-              {/* Accounts List Table */}
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
-                {adminPanelError && (
-                  <p className="text-xs text-rose-500 font-bold bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-lg">
-                    ⚠️ {adminPanelError}
-                  </p>
-                )}
-                
-                <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/20">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold">
-                        <th className="p-3">ユーザーID</th>
-                        <th className="p-3">チーム名</th>
-                        <th className="p-3">パスワード</th>
-                        <th className="p-3 text-center">サブスク状態</th>
-                        <th className="p-3 text-right">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-850">
-                      {adminAccountsList.map((acc) => (
-                        <tr key={acc.id} className="hover:bg-zinc-900/40 text-zinc-300">
-                          <td className="p-3 font-mono font-bold text-white">{acc.id}</td>
-                          <td className="p-3 font-bold">{acc.team_name || '---'}</td>
-                          <td className="p-3">
-                            <input
-                              type="text"
-                              value={acc.password}
-                              onChange={(e) => handleAdminUpdatePassword(acc.id, e.target.value)}
-                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white font-mono font-bold w-24 text-center focus:outline-none focus:border-emerald-500"
+                  {/* Accounts List Table */}
+                  <div className="space-y-2">
+                    <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
+                    {adminPanelError && (
+                      <p className="text-xs text-rose-500 font-bold bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-lg">
+                        ⚠️ {adminPanelError}
+                      </p>
+                    )}
+                    
+                    <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/20">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold">
+                            <th className="p-3">ユーザーID</th>
+                            <th className="p-3">チーム名</th>
+                            <th className="p-3">パスワード</th>
+                            <th className="p-3 text-center">サブスク状態</th>
+                            <th className="p-3 text-right">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-850">
+                          {adminAccountsList.map((acc) => (
+                            <AdminAccountRow
+                              key={acc.id}
+                              acc={acc}
+                              onUpdatePassword={handleAdminUpdatePassword}
+                              onGenerateTempPassword={handleGenerateTempPassword}
+                              onToggleActive={handleAdminToggleActive}
+                              onDelete={setConfirmDeleteId}
                             />
-                          </td>
-                          <td className="p-3 text-center">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
-                              acc.is_active 
-                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' 
-                                : 'bg-rose-950 text-rose-400 border border-rose-900'
-                            }`}>
-                              {acc.is_active ? 'アクティブ' : '停止中'}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {acc.id !== 'admin' && (
-                                <button
-                                  onClick={() => handleAdminToggleActive(acc.id, acc.is_active)}
-                                  className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
-                                    acc.is_active
-                                      ? 'bg-rose-950 hover:bg-rose-900 text-rose-400'
-                                      : 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400'
-                                  }`}
-                                >
-                                  {acc.is_active ? '契約停止' : '再開する'}
-                                </button>
-                              )}
-                              {acc.id !== 'admin' && (
-                                <button
-                                  onClick={() => setConfirmDeleteId(acc.id)}
-                                  className="px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900"
-                                >
-                                  🗑 削除
-                                </button>
-                              )}
-                            </div>
-                          </td>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : adminTab === 'logs' ? (
+                /* ACCESS & AUDIT LOGS TAB */
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="text-[12px] font-bold text-white tracking-wider">📜 アクセス・操作ログ</h4>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">ログイン成功・失敗やCSV/動画書き出しなどの操作履歴です。</p>
+                    </div>
+                    <button
+                      onClick={fetchAdminAccessLogs}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-bold cursor-pointer transition-all"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      ログを最新化
+                    </button>
+                  </div>
+
+                  {/* Filter bar */}
+                  <div className="flex items-center gap-2 bg-zinc-950/60 p-2 rounded-xl border border-zinc-850 text-xs">
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider px-1">絞り込み:</span>
+                    <button
+                      onClick={() => setAdminLogFilter('ALL')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'ALL' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    >
+                      すべて ({adminLogsList.length})
+                    </button>
+                    <button
+                      onClick={() => setAdminLogFilter('LOGIN_FAILED')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'LOGIN_FAILED' ? 'bg-rose-900 text-rose-200 border border-rose-700' : 'text-rose-400 hover:bg-rose-950/40'}`}
+                    >
+                      🔴 ログイン失敗 ({adminLogsList.filter(l => l.action_type === 'LOGIN_FAILED').length})
+                    </button>
+                    <button
+                      onClick={() => setAdminLogFilter('LOGIN')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'LOGIN' ? 'bg-emerald-900 text-emerald-200 border border-emerald-700' : 'text-emerald-400 hover:bg-emerald-950/40'}`}
+                    >
+                      🟢 ログイン成功 ({adminLogsList.filter(l => l.action_type === 'LOGIN').length})
+                    </button>
+                    <button
+                      onClick={() => setAdminLogFilter('CSV_EXPORT')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'CSV_EXPORT' ? 'bg-sky-900 text-sky-200 border border-sky-700' : 'text-sky-400 hover:bg-sky-950/40'}`}
+                    >
+                      📊 CSV出力 ({adminLogsList.filter(l => l.action_type === 'CSV_EXPORT').length})
+                    </button>
+                    <button
+                      onClick={() => setAdminLogFilter('VIDEO_EXPORT')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'VIDEO_EXPORT' ? 'bg-amber-900 text-amber-200 border border-amber-700' : 'text-amber-400 hover:bg-amber-950/40'}`}
+                    >
+                      🎬 動画書き出し ({adminLogsList.filter(l => l.action_type === 'VIDEO_EXPORT').length})
+                    </button>
+                  </div>
+
+                  {/* Logs Table */}
+                  <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/20 max-h-[50vh] overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="sticky top-0 bg-zinc-950 border-b border-zinc-800 text-zinc-400 font-bold z-10">
+                        <tr>
+                          <th className="p-3">日時</th>
+                          <th className="p-3">対象ユーザーID</th>
+                          <th className="p-3">操作種別</th>
+                          <th className="p-3">状態</th>
+                          <th className="p-3">詳細データ</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-850">
+                        {adminLogsList.filter(l => adminLogFilter === 'ALL' || l.action_type === adminLogFilter).map((log) => {
+                          const dateStr = log.created_at ? new Date(log.created_at).toLocaleString('ja-JP') : '---';
+                          let actionBadge = <span className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded text-[9px] font-bold">{log.action_type}</span>;
+                          if (log.action_type === 'LOGIN') {
+                            actionBadge = <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 px-2 py-0.5 rounded text-[9px] font-extrabold">🟢 ログイン成功</span>;
+                          } else if (log.action_type === 'LOGIN_FAILED') {
+                            actionBadge = <span className="bg-rose-950 text-rose-400 border border-rose-900 px-2 py-0.5 rounded text-[9px] font-extrabold">🔴 ログイン失敗</span>;
+                          } else if (log.action_type === 'CSV_EXPORT') {
+                            actionBadge = <span className="bg-sky-950 text-sky-400 border border-sky-900 px-2 py-0.5 rounded text-[9px] font-extrabold">📊 CSVデータ出力</span>;
+                          } else if (log.action_type === 'VIDEO_EXPORT') {
+                            actionBadge = <span className="bg-amber-950 text-amber-400 border border-amber-900 px-2 py-0.5 rounded text-[9px] font-extrabold">🎬 動画/切り出し出力</span>;
+                          }
+
+                          return (
+                            <tr key={log.id} className="hover:bg-zinc-900/40 text-zinc-300">
+                              <td className="p-3 text-[11px] font-mono text-zinc-400 whitespace-nowrap">{dateStr}</td>
+                              <td className="p-3 font-mono font-extrabold text-white">{log.team_id}</td>
+                              <td className="p-3">{actionBadge}</td>
+                              <td className="p-3">
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${log.status === 'success' ? 'text-emerald-400 bg-emerald-950/40' : 'text-rose-400 bg-rose-950/40'}`}>
+                                  {log.status === 'success' ? '成功' : '失敗'}
+                                </span>
+                              </td>
+                              <td className="p-3 text-[10px] text-zinc-400 font-mono max-w-xs truncate">
+                                {log.details ? (
+                                  <span>
+                                    {log.details.reason && `理由: ${log.details.reason} `}
+                                    {log.details.rowCount && `件数: ${log.details.rowCount}行 `}
+                                    {log.details.clipCount && `クリップ数: ${log.details.clipCount}件 `}
+                                    {log.details.fileName && `ファイル: ${log.details.fileName} `}
+                                  </span>
+                                ) : '---'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        {adminLogsList.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="p-8 text-center text-zinc-500 text-xs">
+                              アクセス・操作ログはまだ記録されていません。
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Tab 3: Admin Inquiries List & Reply Form */
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">📩 利用者チームからの問い合わせ一覧</h4>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">メッセージを確認し、その場でアプリ経由で返信を送信できます。</p>
+                    </div>
+                    <button
+                      onClick={fetchAdminSupportList}
+                      className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs font-bold cursor-pointer"
+                    >
+                      🔄 履歴を更新
+                    </button>
+                  </div>
+
+                  {adminSupportList.length === 0 ? (
+                    <div className="p-12 text-center text-zinc-500 text-xs border border-zinc-800 rounded-xl bg-zinc-950/40">
+                      現在、到着しているお問い合わせはありません。
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {adminSupportList.map((msg) => (
+                        <div key={msg.id} className={`p-4 rounded-xl border space-y-3 ${
+                          msg.status === 'pending'
+                            ? 'bg-zinc-900/90 border-amber-500/50 shadow-lg shadow-amber-950/20'
+                            : 'bg-zinc-950/60 border-zinc-800'
+                        }`}>
+                          <div className="flex justify-between items-center border-b border-zinc-800/80 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-extrabold text-white text-xs px-2 py-0.5 bg-zinc-800 rounded border border-zinc-700">
+                                チーム: {msg.team_id}
+                              </span>
+                              <span className={`text-[9px] font-black px-2 py-0.5 rounded ${
+                                msg.status === 'replied'
+                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                                  : 'bg-rose-950 text-rose-400 border border-rose-900 animate-pulse'
+                              }`}>
+                                {msg.status === 'replied' ? '✅ 返信済み' : '🔴 未対応 (返信待ち)'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-zinc-400 font-mono">
+                              {new Date(msg.created_at).toLocaleString('ja-JP')}
+                            </span>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] text-zinc-500 font-bold mb-1">💬 利用者からのメッセージ:</p>
+                            <p className="text-xs text-zinc-200 bg-zinc-950 p-3 rounded-lg border border-zinc-850 font-sans whitespace-pre-wrap">
+                              {msg.message}
+                            </p>
+                          </div>
+
+                          {/* Existing Reply Display */}
+                          {msg.reply && (
+                            <div className="bg-emerald-950/30 border border-emerald-900/50 p-3 rounded-lg space-y-1">
+                              <p className="text-[9px] text-emerald-400 font-extrabold flex items-center gap-1">
+                                <span>💬</span> 管理者からの返信済みメッセージ ({msg.replied_at ? new Date(msg.replied_at).toLocaleString('ja-JP') : ''})
+                              </p>
+                              <p className="text-xs text-emerald-200 font-bold whitespace-pre-wrap">{msg.reply}</p>
+                            </div>
+                          )}
+
+                          {/* Reply Form */}
+                          <div className="pt-2 border-t border-zinc-850 space-y-2">
+                            <label className="text-[10px] font-bold text-zinc-400 block">
+                              ✍️ {msg.reply ? '返信内容を上書き・再更新する:' : 'このチームへ返信を入力:'}
+                            </label>
+                            <textarea
+                              rows={2}
+                              placeholder="返信内容をご記入ください（送信すると利用者のアプリ画面に表示されます）"
+                              value={adminReplyTextMap[msg.id] || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setAdminReplyTextMap(prev => ({ ...prev, [msg.id]: val }));
+                              }}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-sans"
+                            />
+                            <div className="flex justify-end">
+                              <button
+                                onClick={() => handleSendAdminReply(msg.id)}
+                                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer flex items-center gap-1"
+                              >
+                                ✉️ 返信を送信する
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -4481,8 +6854,302 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* GLOBAL RIGHT-CLICK / DOUBLE-CLICK TAGGING CONTEXT MENU OVERLAY (Available across all screens) */}
+      {contextMenu && (() => {
+        const targetEv = events.find(e => e.id === contextMenu.eventId);
+        if (!targetEv) return null;
+
+        // Dynamically merge static TAG_GROUPS with all groupNames from custom buttons
+        const allGroupMap: Record<string, string[]> = { ...TAG_GROUPS };
+        buttons.forEach(b => {
+          if (b.type === 'label' && b.groupName) {
+            if (!allGroupMap[b.groupName]) {
+              allGroupMap[b.groupName] = [];
+            }
+            if (!allGroupMap[b.groupName].includes(b.name)) {
+              allGroupMap[b.groupName].push(b.name);
+            }
+          }
+        });
+        // Add any existing labels groups present on the event (including custom pitch speed values)
+        Object.keys(targetEv.labels).forEach(g => {
+          const val = targetEv.labels[g];
+          if (val && val !== '-') {
+            const canonicalGroup = (g === 'Pitch Speed' || g === 'PITCH_SPEED') ? '球速' : g;
+            if (!allGroupMap[canonicalGroup]) {
+              allGroupMap[canonicalGroup] = [];
+            }
+            if (!allGroupMap[canonicalGroup].includes(val)) {
+              allGroupMap[canonicalGroup].push(val);
+            }
+          }
+        });
+
+        const resolveCurrentTagVal = (gName: string) => {
+          if (gName === '球速') {
+            return targetEv.labels['球速'] || targetEv.labels['Pitch Speed'] || targetEv.labels['PITCH_SPEED'] || '';
+          }
+          return targetEv.labels[gName] || targetEv.labels[gName.toLowerCase()] || '';
+        };
+
+        const activeTagList = activeSubmenuGroup ? (allGroupMap[activeSubmenuGroup.groupName] || []) : [];
+        const activeCurrentTagVal = activeSubmenuGroup ? resolveCurrentTagVal(activeSubmenuGroup.groupName) : '';
+
+        return (
+          <>
+            {/* Backdrop click cover */}
+            <div 
+              className="fixed inset-0 z-[998] bg-black/10" 
+              onClick={() => {
+                setContextMenu(null);
+                setActiveSubmenuGroup(null);
+              }} 
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenu(null);
+                setActiveSubmenuGroup(null);
+              }}
+            />
+            
+            {/* Main Context Menu Box */}
+            <div 
+              style={{ top: `${Math.min(contextMenu.y, window.innerHeight - 340)}px`, left: `${Math.min(contextMenu.x, window.innerWidth - 240)}px` }}
+              className="fixed z-[1000] bg-zinc-950 border border-zinc-750 rounded-xl shadow-2xl p-1.5 text-xs w-56 text-zinc-200 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100 select-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-2.5 py-1.5 border-b border-zinc-800 flex items-center justify-between text-[10px] text-zinc-400 font-bold bg-zinc-900/80 rounded-t-lg">
+                <span className="flex items-center gap-1 text-emerald-400">
+                  <span>🏷️</span> タグの追加・編集 ({targetEv.actionName})
+                </span>
+                <button onClick={() => { setContextMenu(null); setActiveSubmenuGroup(null); }} className="text-zinc-500 hover:text-white px-1">✕</button>
+              </div>
+
+              <div className="flex flex-col gap-0.5 max-h-[300px] overflow-y-auto py-1">
+                {Object.entries(allGroupMap).map(([groupName]) => {
+                  const currentTagVal = resolveCurrentTagVal(groupName);
+                  const isActive = activeSubmenuGroup?.groupName === groupName;
+
+                  return (
+                    <div 
+                      key={groupName}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        // Position submenu directly to the right of this item
+                        let targetLeft = rect.right + 4;
+                        if (targetLeft + 170 > window.innerWidth) {
+                          targetLeft = rect.left - 170; // flip to left if too close to right window edge
+                        }
+                        setActiveSubmenuGroup({
+                          groupName,
+                          top: rect.top,
+                          left: targetLeft
+                        });
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer text-xs transition-colors ${
+                        isActive ? 'bg-zinc-800 border border-zinc-700' : 'hover:bg-zinc-800'
+                      } ${currentTagVal ? 'text-sky-300 font-bold' : 'text-zinc-300'}`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-semibold">{groupName}</span>
+                        {currentTagVal && (
+                          <span className="text-[9px] font-mono px-1 py-0.2 bg-sky-900/80 text-sky-200 rounded border border-sky-700/60 truncate max-w-[80px]">
+                            {currentTagVal}
+                          </span>
+                        )}
+                      </div>
+                      <span className={`text-[10px] ${isActive ? 'text-sky-400 font-extrabold' : 'text-zinc-500'}`}>▶</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="border-t border-zinc-800 pt-1 mt-0.5">
+                <div
+                  onClick={() => {
+                    handleDeleteSelectedEvent(contextMenu.eventId);
+                    setContextMenu(null);
+                    setActiveSubmenuGroup(null);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer text-xs text-red-400 hover:bg-red-950/60 hover:text-red-300 font-bold transition-colors"
+                >
+                  <span>イベントを削除</span>
+                  <span>🗑️</span>
+                </div>
+              </div>
+            </div>
+
+            {/* FLOATING SUBMENU (Positioned with fixed viewport coordinates - Never clipped by parent overflow!) */}
+            {activeSubmenuGroup && activeTagList.length > 0 && (
+              <div
+                style={{
+                  top: `${Math.min(activeSubmenuGroup.top, window.innerHeight - 280)}px`,
+                  left: `${activeSubmenuGroup.left}px`
+                }}
+                className="fixed z-[1010] bg-zinc-950 border border-zinc-700 rounded-xl shadow-2xl p-1 text-xs min-w-[165px] max-h-72 overflow-y-auto flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-75 select-none"
+                onMouseEnter={() => {
+                  // Keep submenu open while hovering inside it
+                }}
+                onMouseLeave={() => {
+                  // Keep active until another item is hovered
+                }}
+              >
+                <div className="px-2.5 py-1 text-[9px] font-black text-zinc-400 uppercase tracking-wider border-b border-zinc-850 bg-zinc-900/60 rounded-t-lg flex items-center justify-between">
+                  <span>{activeSubmenuGroup.groupName}</span>
+                  <span className="text-zinc-600 text-[8px]">一覧</span>
+                </div>
+                {activeTagList.map(tagName => {
+                  const isChecked = activeCurrentTagVal === tagName || activeCurrentTagVal.split(', ').includes(tagName);
+
+                  return (
+                    <div
+                      key={tagName}
+                      onClick={() => {
+                        handleToggleEventTag(contextMenu.eventId, activeSubmenuGroup.groupName, tagName);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer text-xs transition-all hover:bg-zinc-800 ${
+                        isChecked ? 'bg-emerald-950/80 text-emerald-300 font-black border border-emerald-800/80' : 'text-zinc-300'
+                      }`}
+                    >
+                      <span className="truncate pr-2">{tagName}</span>
+                      {isChecked ? (
+                        <span className="text-emerald-400 font-black text-sm">✔</span>
+                      ) : (
+                        <span className="text-zinc-700 text-xs">○</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
 
 export default App;
+
+// Admin Table Account Row Component with masked password editing, toggle eye, temp password support, and explicit save button
+const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onToggleActive, onDelete }: any) => {
+  const [pass, setPass] = useState(acc.password || '');
+  const [showPass, setShowPass] = useState(false);
+  const [isModified, setIsModified] = useState(false);
+
+  useEffect(() => {
+    setPass(acc.password || '');
+    setIsModified(false);
+  }, [acc.password]);
+
+  const handleSave = () => {
+    onUpdatePassword(acc.id, pass);
+    setIsModified(false);
+  };
+
+  const hasValidTempPass = acc.temp_password 
+    && acc.temp_password_expires_at 
+    && new Date(acc.temp_password_expires_at).getTime() > Date.now();
+
+  const tempMinutesLeft = hasValidTempPass 
+    ? Math.ceil((new Date(acc.temp_password_expires_at).getTime() - Date.now()) / 60000)
+    : 0;
+
+  return (
+    <tr className="hover:bg-zinc-900/40 text-zinc-300">
+      <td className="p-3 font-mono font-bold text-white flex items-center gap-1.5">
+        <span>{acc.id}</span>
+        {acc.id === 'admin' && (
+          <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 text-[9px] px-1.5 py-0.5 rounded font-extrabold">
+            管理者
+          </span>
+        )}
+      </td>
+      <td className="p-3 font-bold">{acc.team_name || '---'}</td>
+      <td className="p-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex items-center">
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={showPass && hasValidTempPass ? acc.temp_password : pass}
+                onChange={(e) => {
+                  setPass(e.target.value);
+                  setIsModified(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && isModified) {
+                    handleSave();
+                  }
+                }}
+                className={`bg-zinc-900 border ${hasValidTempPass ? 'border-amber-600/70 text-amber-300' : 'border-zinc-800 text-white'} rounded pl-2 pr-7 py-1 text-xs font-mono font-bold w-28 text-center focus:outline-none focus:border-emerald-500`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute right-1.5 text-zinc-400 hover:text-white p-0.5 cursor-pointer transition-colors"
+                title={showPass ? 'パスワードを隠す' : 'パスワードを表示'}
+              >
+                {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            {isModified && (
+              <button
+                onClick={handleSave}
+                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap"
+              >
+                保存
+              </button>
+            )}
+          </div>
+          {hasValidTempPass && (
+            <p className="text-[9px] text-amber-400 font-bold flex items-center gap-1">
+              ⚡ 一時パス有効中 (残り{tempMinutesLeft}分)
+            </p>
+          )}
+        </div>
+      </td>
+      <td className="p-3 text-center">
+        <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
+          acc.is_active 
+            ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' 
+            : 'bg-rose-950 text-rose-400 border border-rose-900'
+        }`}>
+          {acc.is_active ? 'アクティブ' : '停止中'}
+        </span>
+      </td>
+      <td className="p-3 text-right">
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            onClick={() => onGenerateTempPassword(acc.id)}
+            className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800/60 flex items-center gap-1"
+            title="30分間だけ有効な緊急・復旧用一時パスワードを発行します"
+          >
+            ⚡ 一時パス発行
+          </button>
+
+          {acc.id !== 'admin' && (
+            <button
+              onClick={() => onToggleActive(acc.id, acc.is_active)}
+              className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                acc.is_active
+                  ? 'bg-rose-950 hover:bg-rose-900 text-rose-400'
+                  : 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400'
+              }`}
+            >
+              {acc.is_active ? '契約停止' : '再開する'}
+            </button>
+          )}
+          {acc.id !== 'admin' && (
+            <button
+              onClick={() => onDelete(acc.id)}
+              className="px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900"
+            >
+              🗑 削除
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};

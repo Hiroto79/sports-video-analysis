@@ -1,19 +1,22 @@
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // Determine if we are in development mode
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow;
 
-// ---- Auto Updater (only active in packaged/distributed builds) ----
+// ---- Auto Updater (only active in packaged/distributed builds with update config) ----
 let autoUpdater = null;
 if (!isDev) {
   try {
-    const { autoUpdater: au } = require('electron-updater');
-    autoUpdater = au;
-    autoUpdater.autoDownload = false;       // Don't download automatically — user must click "Update"
-    autoUpdater.autoInstallOnAppQuit = true; // Install when user quits after download
+    const updateConfigPath = path.join(process.resourcesPath, 'app-update.yml');
+    if (fs.existsSync(updateConfigPath)) {
+      const { autoUpdater: au } = require('electron-updater');
+      autoUpdater = au;
+      autoUpdater.autoDownload = false;       // Don't download automatically — user must click "Update"
+      autoUpdater.autoInstallOnAppQuit = process.platform !== 'darwin'; // Mac: can't auto-install without signing
 
     autoUpdater.on('update-available', (info) => {
       if (mainWindow) {
@@ -41,7 +44,11 @@ if (!isDev) {
 
     autoUpdater.on('error', (err) => {
       console.error('Auto updater error:', err);
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', err ? err.message : 'Unknown error');
+      }
     });
+    }
   } catch (e) {
     console.log('electron-updater not available:', e.message);
   }
@@ -54,8 +61,18 @@ ipcMain.handle('check-for-updates', async () => {
       await autoUpdater.checkForUpdates();
       return { checking: true };
     } catch (e) {
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', e.message);
+      }
       return { error: e.message };
     }
+  }
+
+  // Fallback for dev mode or packaged app without update config (electron-packager build)
+  if (mainWindow) {
+    setTimeout(() => {
+      mainWindow.webContents.send('update-not-available');
+    }, 1500);
   }
   return { isDev: true };
 });
@@ -80,6 +97,13 @@ ipcMain.handle('quit-and-install', () => {
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
+
+// IPC: Open external URL in browser
+ipcMain.handle('open-external', async (_event, url) => {
+  const { shell } = require('electron');
+  await shell.openExternal(url);
+});
+
 
 function createWindows() {
   // Get screen width and height to position windows nicely
@@ -138,8 +162,9 @@ function createWindows() {
     mainWindow = null;
   });
 
-  // Check for updates 5 seconds after app is ready (only packaged builds)
-  if (!isDev && autoUpdater) {
+  // Check for updates 5 seconds after app is ready (only packaged builds, NOT on macOS)
+  // macOS: unsigned apps can't auto-update, so auto-check causes errors/popups. User must click button manually.
+  if (!isDev && autoUpdater && process.platform !== 'darwin') {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(console.error);
     }, 5000);

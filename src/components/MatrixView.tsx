@@ -9,7 +9,7 @@ interface MatrixViewProps {
 }
 
 type RowAxisType = 'pitcher' | 'batter' | 'inning' | 'action';
-type ColAxisType = 'all' | 'pitch_type' | 'result' | 'batted_ball' | 'course';
+type ColAxisType = 'all' | 'pitch_type' | 'result' | 'batted_ball' | 'course' | 'pitch_speed';
 
 const AXIS_LABELS_ROW: Record<RowAxisType, string> = {
   pitcher: '投手名',
@@ -23,7 +23,8 @@ const AXIS_LABELS_COL: Record<ColAxisType, string> = {
   pitch_type: '球種のみ',
   result: '結果のみ',
   batted_ball: '打球方向のみ',
-  course: 'コース位置のみ',
+  course: 'コースのみ',
+  pitch_speed: '球速のみ',
 };
 
 export const MatrixView: React.FC<MatrixViewProps> = ({ events, onOpenMatrixPlayer }) => {
@@ -49,6 +50,8 @@ export const MatrixView: React.FC<MatrixViewProps> = ({ events, onOpenMatrixPlay
         return getLabelValueByKeywords(ev.labels, ['batted ball', 'battedball', '打球方向', '打球位置']);
       case 'course':
         return getLabelValueByKeywords(ev.labels, ['course', 'コース', 'コース位置']);
+      case 'pitch_speed':
+        return getLabelValueByKeywords(ev.labels, ['pitch speed', 'pitchspeed', '球速', 'pitch_speed']);
       default:
         return '';
     }

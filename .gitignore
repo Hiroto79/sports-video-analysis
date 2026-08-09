@@ -24,4 +24,10 @@ dist-ssr
 *.sw?
 .env
 *.env
-
+build_output
+release_output
+release_output/*
+.vercel
+*.dmg
+*.zip
+*.blockmap
