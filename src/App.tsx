@@ -1535,6 +1535,18 @@ function App() {
   // Game date state: manually set game date for tagging session (stored as YYYY-MM-DD)
   const [gameDate, setGameDate] = useState<string>(() => localStorage.getItem('sportscode_game_date') || '');
 
+  // Global Toast Notification State
+  const [globalToast, setGlobalToast] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setGlobalToast(message);
+    toastTimeoutRef.current = setTimeout(() => {
+      setGlobalToast(null);
+    }, 2800);
+  };
+
   const [players, setPlayers] = useState<Player[]>(() => {
     const saved = localStorage.getItem('sportscode_players') || localStorage.getItem('sportscode_designer_roster');
     if (saved) {
@@ -3255,6 +3267,8 @@ function App() {
     setVideoUrl(url);
     setVideoName(file.name);
     setVideoDuration(0);
+    handleViewChange('tagger');
+    showToast(`🎬 動画「${file.name}」を読み込みました`);
   };
 
   const handleAddPlayer = (
@@ -3497,6 +3511,8 @@ function App() {
     setCurrentTime(0);
     setVideoDuration(0);
     e.target.value = '';
+    handleViewChange('tagger');
+    showToast(`🎬 動画「${file.name}」を読み込みました`);
   };
 
   const handleToggleEventTag = (eventId: string, groupKey: string, tagVal: string) => {
@@ -4745,7 +4761,15 @@ function App() {
 
   // --- RENDER ROUTER: MAIN WORKSPACE (Video Player & Simple Tag Logs list) ---
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased relative">
+      {/* Global Toast Notification */}
+      {globalToast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/95 border border-emerald-500/80 text-emerald-200 px-4 py-2 rounded-xl shadow-2xl font-extrabold text-xs flex items-center gap-2 backdrop-blur animate-bounce pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+          <span>{globalToast}</span>
+        </div>
+      )}
+
       {/* Header Banner */}
       <header className="px-3 py-2 xl:px-4 xl:py-2 bg-zinc-900/90 border-b border-zinc-850 backdrop-blur-md flex flex-wrap gap-2 items-center justify-between sticky top-0 z-40 w-full max-w-full overflow-x-hidden">
         <div className="flex items-center gap-2 shrink-0">
