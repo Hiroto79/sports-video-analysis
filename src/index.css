@@ -13,11 +13,14 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* Smooth transitions for all interactive elements */
+  /* Smooth transitions for all interactive elements and instant touch response */
   button, select, input, a {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    touch-action: manipulation;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* Custom Webkit scrollbar */

@@ -969,55 +969,69 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-3 w-full flex-1 min-w-0">
+    <div className="flex flex-col lg:flex-row gap-3 w-full flex-1 min-w-0">
       
-      {/* LEFT COLUMN: Control Widgets Panel (Code Window - 2/5 Ratio Width) */}
-      <div className="w-full lg:w-2/5 flex flex-col gap-2 bg-zinc-900 border border-zinc-800 p-2.5 rounded-xl shadow-xl h-fit text-[10px] shrink-0">
+      {/* LEFT COLUMN: Control Widgets Panel (Code Window - 2/5 Ratio Width on iPad landscape/desktop) */}
+      <div className="w-full lg:w-2/5 flex flex-col gap-2.5 bg-zinc-900 border border-zinc-800 p-3 sm:p-3.5 rounded-xl shadow-xl h-fit text-xs shrink-0">
         
         {/* ROW 1: Count & Inning & Batter with Prev/Next buttons */}
         <div className="grid grid-cols-12 gap-2 items-center">
           {/* Balls, Strikes, Outs */}
-          <div className="col-span-4 bg-zinc-950/50 px-2 py-1 rounded-lg border border-zinc-850 flex flex-col justify-center gap-1 h-10">
-            <div className="flex justify-between items-center text-[7.5px] uppercase font-black text-zinc-550 select-none">
-              <span>カウント</span>
-              <button onClick={onResetScoreboard} className="text-zinc-650 hover:text-zinc-400">
-                <RotateCcw className="w-2.5 h-2.5" />
+          <div className="col-span-12 sm:col-span-4 bg-zinc-950/60 p-2 rounded-lg border border-zinc-850 flex flex-col justify-between gap-1.5 min-h-[48px]">
+            <div className="flex justify-between items-center text-[9px] uppercase font-black text-zinc-400 select-none">
+              <span>カウント (B/S/O)</span>
+              <button 
+                type="button"
+                onClick={onResetScoreboard} 
+                className="text-zinc-500 hover:text-zinc-300 p-1 rounded hover:bg-zinc-800 transition-colors"
+                title="カウントリセット"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="flex gap-2 text-[9px] font-bold text-zinc-450">
-              <div className="flex items-center gap-0.5">
-                <span>B:</span>
+            <div className="flex justify-around items-center gap-1.5 text-xs font-bold text-zinc-300">
+              {/* Ball */}
+              <div className="flex items-center gap-1">
+                <span className="text-emerald-400 font-mono font-black text-xs">B:</span>
                 {[1, 2, 3].map(b => (
-                  <div
+                  <button
                     key={b}
+                    type="button"
                     onClick={onIncrementBall}
-                    className={`w-2.5 h-2.5 rounded-full border cursor-pointer ${
-                      balls >= b ? 'bg-emerald-500 border-emerald-455 shadow shadow-emerald-700' : 'bg-zinc-900 border-zinc-850'
+                    className={`w-4 h-4 rounded-full border cursor-pointer transition-all active:scale-90 ${
+                      balls >= b ? 'bg-emerald-500 border-emerald-400 shadow shadow-emerald-700/80 scale-105' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                     }`}
+                    title={`ボール ${b}`}
                   />
                 ))}
               </div>
-              <div className="flex items-center gap-0.5">
-                <span>S:</span>
+              {/* Strike */}
+              <div className="flex items-center gap-1">
+                <span className="text-amber-400 font-mono font-black text-xs">S:</span>
                 {[1, 2].map(s => (
-                  <div
+                  <button
                     key={s}
+                    type="button"
                     onClick={onIncrementStrike}
-                    className={`w-2.5 h-2.5 rounded-full border cursor-pointer ${
-                      strikes >= s ? 'bg-yellow-500 border-yellow-450 shadow shadow-yellow-600' : 'bg-zinc-900 border-zinc-850'
+                    className={`w-4 h-4 rounded-full border cursor-pointer transition-all active:scale-90 ${
+                      strikes >= s ? 'bg-amber-500 border-amber-400 shadow shadow-yellow-600/80 scale-105' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                     }`}
+                    title={`ストライク ${s}`}
                   />
                 ))}
               </div>
-              <div className="flex items-center gap-0.5">
-                <span>O:</span>
+              {/* Out */}
+              <div className="flex items-center gap-1">
+                <span className="text-rose-400 font-mono font-black text-xs">O:</span>
                 {[1, 2].map(o => (
-                  <div
+                  <button
                     key={o}
+                    type="button"
                     onClick={onIncrementOut}
-                    className={`w-2.5 h-2.5 rounded-full border cursor-pointer ${
-                      outs >= o ? 'bg-red-500 border-red-400 shadow shadow-red-700' : 'bg-zinc-900 border-zinc-850'
+                    className={`w-4 h-4 rounded-full border cursor-pointer transition-all active:scale-90 ${
+                      outs >= o ? 'bg-rose-500 border-rose-400 shadow shadow-rose-700/80 scale-105' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                     }`}
+                    title={`アウト ${o}`}
                   />
                 ))}
               </div>
@@ -1025,9 +1039,9 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
           </div>
 
           {/* Inning Select */}
-          <div className="col-span-3 flex flex-col gap-0.5">
-            <label className="text-[7.5px] uppercase font-bold text-zinc-500 select-none">イニング</label>
-            <div className="flex gap-0.5 h-7">
+          <div className="col-span-5 sm:col-span-3 flex flex-col gap-0.5">
+            <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">イニング</label>
+            <div className="flex gap-0.5 h-8">
               <select
                 value={inningNum}
                 onChange={(e) => onUpdateInningNum(Number(e.target.value))}
@@ -1049,13 +1063,13 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
           </div>
 
           {/* Batter Select + Prev / Next Switchers */}
-          <div className="col-span-5 flex flex-col gap-0.5">
-            <label className="text-[7.5px] uppercase font-bold text-zinc-550 select-none">打者 [攻: {battingTeam}]</label>
-            <div className="flex items-center gap-1 h-7">
+          <div className="col-span-7 sm:col-span-5 flex flex-col gap-0.5">
+            <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">打者 [攻: {battingTeam}]</label>
+            <div className="flex items-center gap-1 h-8">
               <button
                 type="button"
                 onClick={handlePrevBatter}
-                className="px-1.5 bg-zinc-800 hover:bg-zinc-755 text-zinc-305 rounded text-xs border border-zinc-750 h-7 flex items-center justify-center cursor-pointer active:scale-95"
+                className="px-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs border border-zinc-700 h-8 flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow"
                 title="前の打者 (戻る)"
               >
                 ◀
@@ -1063,7 +1077,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               <select
                 value={activePlayerId || 'unassigned'}
                 onChange={(e) => onSelectPlayer(e.target.value === 'unassigned' ? null : e.target.value)}
-                className="bg-zinc-900 border border-zinc-800 rounded px-1.5 text-[9.5px] focus:outline-none transition-colors h-7 text-zinc-200 flex-1 min-w-0 cursor-pointer"
+                className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 text-xs focus:outline-none transition-colors h-8 text-zinc-100 flex-1 min-w-0 cursor-pointer font-bold"
               >
                 <option value="unassigned">打者未選択</option>
                 {battingPlayers.map((p, idx) => (
@@ -1078,7 +1092,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                     if (onUpdatePlayerBats) onUpdatePlayerBats(activePlayerObj.id, val);
                     else onUpdatePlayerHand(activePlayerObj.id, val);
                   }}
-                  className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-8 text-center shrink-0"
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-amber-300 font-black focus:outline-none cursor-pointer h-8 w-9 text-center shrink-0"
                   title="打撃の左右を切り替え"
                 >
                   <option value="R">右</option>
@@ -1089,7 +1103,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               <button
                 type="button"
                 onClick={handleNextBatter}
-                className="px-1.5 bg-zinc-805 hover:bg-zinc-755 text-zinc-305 rounded text-xs border border-zinc-750 h-7 flex items-center justify-center cursor-pointer active:scale-95"
+                className="px-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs border border-zinc-700 h-8 flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow"
                 title="次の打者 (進む)"
               >
                 ▶
@@ -1465,30 +1479,31 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               </div>
               
               {/* Compact 5x5 Grid */}
-              <div className="flex flex-col gap-0.5 bg-zinc-950 p-1 rounded-lg border border-zinc-850">
+              <div className="flex flex-col gap-1 bg-zinc-950 p-1.5 rounded-lg border border-zinc-850">
                 {[1, 2, 3, 4, 5].map((row) => {
                   const cols = coursePerspective === 'catcher' ? [1, 2, 3, 4, 5] : [5, 4, 3, 2, 1];
                   return (
-                    <div key={row} className="flex gap-0.5 justify-center">
+                    <div key={row} className="flex gap-1 justify-center">
                       {cols.map((col) => {
                         const { label, isStrikeZone } = getCellDetails(row, col);
                         const isSelected = selectedCourse === label;
 
                         return (
-                          <div
+                          <button
                             key={col}
+                            type="button"
                             onClick={() => handleCellClick(label)}
-                            className={`w-[20px] h-[20px] flex items-center justify-center text-[7px] font-mono font-bold rounded cursor-pointer transition-all border ${
+                            className={`w-[23px] h-[23px] sm:w-[25px] sm:h-[25px] flex items-center justify-center text-[8px] sm:text-[9px] font-mono font-black rounded-md cursor-pointer transition-all border active:scale-90 ${
                               isSelected
-                                ? 'bg-sky-500 border-sky-350 text-white shadow font-black scale-105'
+                                ? 'bg-sky-500 border-sky-300 text-white shadow-lg shadow-sky-950 font-black scale-105 ring-1 ring-sky-400'
                                 : isStrikeZone
-                                  ? 'bg-red-950/40 border-red-900/40 text-red-300 hover:bg-red-900/60'
-                                  : 'bg-blue-950/30 border-blue-900/30 text-blue-300 hover:bg-blue-900/50'
+                                  ? 'bg-red-950/50 border-red-900/50 text-red-300 hover:bg-red-900/70'
+                                  : 'bg-blue-950/40 border-blue-900/40 text-blue-300 hover:bg-blue-900/60'
                             }`}
                             title={label}
                           >
                             {label}
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -1618,7 +1633,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                               });
                             }
                           }}
-                          className={`w-full border rounded py-1 text-[9px] font-bold leading-tight transition-all active:scale-95 text-center cursor-pointer ${displayColor}`}
+                          className={`w-full border rounded-lg py-1.5 sm:py-1 text-[10px] sm:text-[9.5px] font-bold leading-tight transition-all active:scale-90 text-center cursor-pointer shadow-sm ${displayColor}`}
                         >
                           {displayName}
                         </button>
@@ -1706,7 +1721,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                               });
                             }
                           }}
-                          className={`w-full border rounded py-1 text-[9px] font-bold leading-tight transition-all active:scale-95 text-center cursor-pointer ${displayColor}`}
+                          className={`w-full border rounded-lg py-1.5 sm:py-1 text-[10px] sm:text-[9.5px] font-bold leading-tight transition-all active:scale-90 text-center cursor-pointer shadow-sm ${displayColor}`}
                         >
                           {displayName}
                         </button>
@@ -1787,11 +1802,11 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
             </div>
 
             {/* Far Right Side: Pitch Speed Mini Calculator Keypad (Expanded flex-1 aligned with Runner) */}
-            <div className="flex-1 flex flex-col gap-1 min-w-0 h-[140px] justify-between bg-zinc-950/80 border border-amber-900/40 p-2 rounded-xl shadow select-none">
-              <div className="flex justify-between items-center text-[7.5px] font-black text-amber-400 select-none">
+            <div className="flex-1 flex flex-col gap-1 min-w-0 min-h-[148px] justify-between bg-zinc-950/80 border border-amber-900/40 p-2 rounded-xl shadow select-none">
+              <div className="flex justify-between items-center text-[8.5px] font-black text-amber-400 select-none">
                 <span className="truncate">⚡ 球速(km/h)</span>
-                <div className="flex items-center gap-0.5">
-                  <span className="font-mono text-[9.5px] text-amber-300 bg-black/80 border border-amber-800/80 px-1.5 py-0.5 rounded font-bold">
+                <div className="flex items-center gap-1">
+                  <span className="font-mono text-xs text-amber-300 bg-black/90 border border-amber-700/80 px-2 py-0.5 rounded font-black tracking-wider">
                     {pitchSpeedInput ? `${pitchSpeedInput}` : '___'}
                   </span>
                   <button
@@ -1800,16 +1815,16 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                       const current = pitchSpeedInput || '';
                       onUpdatePitchSpeedInput?.(current.slice(0, -1));
                     }}
-                    className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-[8px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold"
-                    title="消去"
+                    className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-[9px] text-rose-300 border border-zinc-700 rounded-lg cursor-pointer font-bold active:scale-90"
+                    title="1文字消去"
                   >
-                    ⌫ 消去
+                    ⌫
                   </button>
                 </div>
               </div>
 
               {/* Mini 3x4 Grid (直感的な電卓配列 3列) */}
-              <div className="grid grid-cols-3 gap-1 text-[9.5px] font-extrabold flex-1 pt-1">
+              <div className="grid grid-cols-3 gap-1 text-xs font-black flex-1 pt-1">
                 {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.'].map((keyVal) => (
                   <button
                     key={keyVal}
@@ -1821,7 +1836,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                         onUpdatePitchSpeedInput?.(current + keyVal);
                       }
                     }}
-                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-100 cursor-pointer active:scale-95 text-center flex items-center justify-center font-mono font-bold h-7"
+                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-8 shadow-sm"
                   >
                     {keyVal}
                   </button>
