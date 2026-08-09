@@ -4755,9 +4755,6 @@ function App() {
           <div className="min-w-0">
             <h1 className="text-xs sm:text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5 truncate">
               <span>{appLanguage === 'en' ? 'Sports Video Tagger & Stats Logger' : 'スポーツビデオタグ＆スタッツロガー'}</span>
-              <span className="text-[8px] bg-red-950 border border-red-800 text-red-400 font-bold px-1 py-0.2 rounded hidden sm:inline-block">
-                Elite v9.0
-              </span>
             </h1>
           </div>
         </div>
@@ -4812,9 +4809,9 @@ function App() {
                   ? 'bg-gradient-to-r from-amber-600 to-emerald-600 border-amber-400 text-white shadow shadow-amber-950'
                   : 'bg-zinc-900/80 border-amber-900/50 text-amber-300 hover:text-white hover:bg-zinc-800'
               }`}
-              title="動画ファイルを読み込まず、超軽量・高速に現地試合をリアルタイム打刻します"
+              title="動画ファイルを使わずに、タイマーに合わせてリアルタイムに打刻・記録します"
             >
-              ⏱️ {appLanguage === 'en' ? 'Live Tagger' : 'ライブ打刻'}
+              ⏱️ {appLanguage === 'en' ? 'No-Video Tagger' : '動画なし打刻 (現地)'}
             </button>
           </div>
 
@@ -5110,14 +5107,14 @@ function App() {
                     ⏱️
                   </div>
                   <div>
-                    <h4 className="text-xs font-black text-white flex items-center gap-2">
-                      動画なし・ライブ現地タギングモード
-                      <span className="px-2 py-0.5 bg-emerald-950 border border-emerald-800 text-emerald-400 text-[8px] font-bold rounded-full animate-pulse">
-                        LIVE READY
+                    <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                      ライブ打刻モード
+                      <span className="px-2 py-0.5 bg-emerald-950 border border-emerald-800 text-emerald-400 text-[8px] font-bold rounded-full">
+                        LIVE
                       </span>
                     </h4>
-                    <p className="text-[10px] text-zinc-400">
-                      動画ファイルが無くても、リアルタイム経過時間でタイムライン打刻・記録が可能です
+                    <p className="text-[10px] text-zinc-400 mt-0.5">
+                      リアルタイムタイマーに連動して打刻・記録できます。
                     </p>
                   </div>
                 </div>
@@ -5329,14 +5326,14 @@ function App() {
                 ⏱️
               </div>
               <div>
-                <h3 className="text-sm font-black text-white flex items-center gap-2">
-                  完全動画なし・超軽量ライブタギング
-                  <span className="px-2.5 py-0.5 bg-emerald-950 border border-emerald-800 text-emerald-400 text-[9px] font-black rounded-full animate-pulse">
-                    CRASH FREE LIVE MODE
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  動画なし・現地ライブ打刻
+                  <span className="px-2.5 py-0.5 bg-amber-950/90 border border-amber-800 text-amber-400 text-[9px] font-bold rounded-full">
+                    動画不要モード
                   </span>
                 </h3>
-                <p className="text-[10px] text-amber-300 font-bold mt-0.5">
-                  動画プレイヤー非読み込みのためメモリー消費ゼロ！スマホやiPad、Web版でも絶対にクラッシュしません。
+                <p className="text-[10px] text-zinc-400 mt-0.5">
+                  動画ファイルを使わずに、試合タイマーに合わせて現地でリアルタイムに投球・打撃ログを打刻・記録できます。
                 </p>
               </div>
             </div>
@@ -5423,7 +5420,7 @@ function App() {
                   <Users className="w-3 h-3" /> {isLiveRosterOpen ? '✕ 選手管理を閉じる' : '👥 選手・チーム登録'}
                 </button>
                 <span className="text-[9.5px] text-zinc-400">
-                  タイマーを止めずに打刻タグをリアルタイム編集・削除・微調整可能
+                  打刻したタグの編集・微調整が可能です
                 </span>
               </div>
             </div>
@@ -6449,8 +6446,8 @@ function App() {
                     ⚾
                   </div>
                   <div>
-                    <h4 className="font-black text-white text-sm">SportsVideoAnalysis</h4>
-                    <p className="text-[10px] font-bold text-emerald-400 mt-0.5">Elite Edition v9.0</p>
+                    <h4 className="font-black text-white text-sm">Sports Video Analysis</h4>
+                    <p className="text-[10px] font-bold text-emerald-400 mt-0.5">Version 1.0.6</p>
                     <p className="text-[10px] text-zinc-500 mt-2">© 2026 Sports analytics desktop logger.</p>
                   </div>
                 </div>

@@ -320,7 +320,7 @@ export const MatrixPlayerModal: React.FC<MatrixPlayerModalProps> = ({
                 {title}
               </h2>
               <p className="text-[10px] text-zinc-450 mt-1">
-                Sportscode Elite: {sortedClips.length} 件のプレイをプレイリスト再生中
+                {sortedClips.length} 件のプレイを連続再生中
               </p>
             </div>
           </div>
