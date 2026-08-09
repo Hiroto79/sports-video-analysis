@@ -799,7 +799,6 @@ function App() {
   const [newTeamId, setNewTeamId] = useState('');
   const [newTeamPassword, setNewTeamPassword] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
-  const [newTeamEmail, setNewTeamEmail] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // App Settings & Language states
@@ -1211,30 +1210,14 @@ function App() {
     }
 
     if (supabase) {
-      const emailVal = newTeamEmail.trim() || null;
-      // 1. Try insert with email column
-      let { error } = await supabase
+      const { error } = await supabase
         .from('team_accounts')
         .insert({
           id: trimmedId,
           password: trimmedPass,
           team_name: newTeamName.trim() || null,
-          ...(emailVal ? { email: emailVal } : {}),
           is_active: true
         });
-
-      // 2. If 'email' column does not exist in Supabase schema cache, retry without email
-      if (error && (error.message.includes("Could not find the 'email' column") || error.code === 'PGRST204')) {
-        const fallbackRes = await supabase
-          .from('team_accounts')
-          .insert({
-            id: trimmedId,
-            password: trimmedPass,
-            team_name: newTeamName.trim() || null,
-            is_active: true
-          });
-        error = fallbackRes.error;
-      }
 
       if (error) {
         if (error.message.includes('duplicate key') || error.code === '23505') {
@@ -1245,14 +1228,13 @@ function App() {
         return;
       }
     } else {
-      usersDb[trimmedId] = { name: newTeamName || trimmedId, password: newTeamPassword, email: newTeamEmail };
+      usersDb[trimmedId] = { name: newTeamName || trimmedId, password: newTeamPassword };
       window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
     }
 
     setNewTeamId('');
     setNewTeamPassword('');
     setNewTeamName('');
-    setNewTeamEmail('');
     showToast(`✅ 新規アカウント「${trimmedId}」を作成しました！`);
     fetchAdminAccounts();
   };
@@ -6563,7 +6545,7 @@ function App() {
                   {/* Account Creator Form */}
                   <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl space-y-4">
                     <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">➕ 新規チーム（アカウント）登録・更新</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] text-zinc-500 font-bold">ユーザーID</label>
                         <input
@@ -6575,7 +6557,7 @@ function App() {
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] text-zinc-500 font-bold">パスワード</label>
+                        <label className="text-[9px] text-zinc-400 font-bold">初期パスワード</label>
                         <input
                           type="text"
                           placeholder="パスワード"
@@ -6585,7 +6567,7 @@ function App() {
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] text-zinc-500 font-bold">チーム表示名</label>
+                        <label className="text-[9px] text-zinc-400 font-bold">チーム表示名</label>
                         <input
                           type="text"
                           placeholder="例: ブレーブス"
@@ -6594,20 +6576,10 @@ function App() {
                           className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
                         />
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] text-zinc-500 font-bold">メールアドレス (復旧用)</label>
-                        <input
-                          type="email"
-                          placeholder="例: team@example.com"
-                          value={newTeamEmail}
-                          onChange={(e) => setNewTeamEmail(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                        />
-                      </div>
                     </div>
                     <button
                       onClick={handleAdminCreateTeam}
-                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center active:scale-98"
                     >
                       新しいアカウントを保存
                     </button>
