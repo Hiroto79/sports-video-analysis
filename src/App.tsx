@@ -799,6 +799,7 @@ function App() {
   const [newTeamId, setNewTeamId] = useState('');
   const [newTeamPassword, setNewTeamPassword] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamEmail, setNewTeamEmail] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // App Settings & Language states
@@ -1210,14 +1211,30 @@ function App() {
     }
 
     if (supabase) {
-      const { error } = await supabase
+      const emailVal = newTeamEmail.trim() || null;
+      // 1. Try insert with email column
+      let { error } = await supabase
         .from('team_accounts')
         .insert({
           id: trimmedId,
           password: trimmedPass,
           team_name: newTeamName.trim() || null,
+          ...(emailVal ? { email: emailVal } : {}),
           is_active: true
         });
+
+      // 2. Fallback without email if schema cache is refreshing
+      if (error && (error.message.includes("Could not find the 'email' column") || error.code === 'PGRST204')) {
+        const fallbackRes = await supabase
+          .from('team_accounts')
+          .insert({
+            id: trimmedId,
+            password: trimmedPass,
+            team_name: newTeamName.trim() || null,
+            is_active: true
+          });
+        error = fallbackRes.error;
+      }
 
       if (error) {
         if (error.message.includes('duplicate key') || error.code === '23505') {
@@ -1228,13 +1245,14 @@ function App() {
         return;
       }
     } else {
-      usersDb[trimmedId] = { name: newTeamName || trimmedId, password: newTeamPassword };
+      usersDb[trimmedId] = { name: newTeamName || trimmedId, password: newTeamPassword, email: newTeamEmail };
       window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
     }
 
     setNewTeamId('');
     setNewTeamPassword('');
     setNewTeamName('');
+    setNewTeamEmail('');
     showToast(`✅ 新規アカウント「${trimmedId}」を作成しました！`);
     fetchAdminAccounts();
   };
@@ -6545,9 +6563,9 @@ function App() {
                   {/* Account Creator Form */}
                   <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl space-y-4">
                     <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">➕ 新規チーム（アカウント）登録・更新</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] text-zinc-500 font-bold">ユーザーID</label>
+                        <label className="text-[9px] text-zinc-400 font-bold">ユーザーID</label>
                         <input
                           type="text"
                           placeholder="例: Team_Braves"
@@ -6576,6 +6594,16 @@ function App() {
                           className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
                         />
                       </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-zinc-400 font-bold">メールアドレス (復旧・連絡用)</label>
+                        <input
+                          type="email"
+                          placeholder="例: team@example.com"
+                          value={newTeamEmail}
+                          onChange={(e) => setNewTeamEmail(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
                     </div>
                     <button
                       onClick={handleAdminCreateTeam}
@@ -6600,6 +6628,7 @@ function App() {
                           <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold">
                             <th className="p-3">ユーザーID</th>
                             <th className="p-3">チーム名</th>
+                            <th className="p-3">メールアドレス</th>
                             <th className="p-3">パスワード</th>
                             <th className="p-3 text-center">サブスク状態</th>
                             <th className="p-3 text-right">操作</th>
@@ -7077,6 +7106,7 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onTogg
         )}
       </td>
       <td className="p-3 font-bold">{acc.team_name || '---'}</td>
+      <td className="p-3 font-mono text-zinc-400 text-[11px]">{acc.email || <span className="text-zinc-600 font-sans">未登録</span>}</td>
       <td className="p-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
