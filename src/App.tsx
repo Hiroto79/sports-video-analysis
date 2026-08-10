@@ -810,7 +810,7 @@ function App() {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminTab, setAdminTab] = useState<'accounts' | 'logs' | 'inquiries'>('accounts');
   const [adminAccountsList, setAdminAccountsList] = useState<any[]>([]);
-  const [adminAccountsFilter, setAdminAccountsFilter] = useState<'ALL' | 'PENDING' | 'ACTIVE'>('ALL');
+  const [adminAccountsFilter, setAdminAccountsFilter] = useState<'ALL' | 'PENDING' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [adminLogsList, setAdminLogsList] = useState<any[]>([]);
   const [adminLogFilter, setAdminLogFilter] = useState<'ALL' | 'LOGIN' | 'LOGIN_FAILED' | 'CSV_EXPORT' | 'VIDEO_EXPORT'>('ALL');
   const [adminPanelError, setAdminPanelError] = useState<string | null>(null);
@@ -6800,48 +6800,48 @@ function App() {
 
       {/* 5. ADMINISTRATOR PANEL MODAL */}
       {showAdminPanel && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative">
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative">
             {/* Header with Tabs */}
-            <div className="px-6 py-3.5 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
+            <div className="px-4 sm:px-6 py-3 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/80 gap-2 shrink-0">
+              <div className="flex items-center gap-3 flex-wrap min-w-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <Users className="w-5 h-5 text-emerald-500" />
-                  <h3 className="text-sm font-extrabold text-white">管理者コントロール</h3>
+                  <h3 className="text-sm font-extrabold text-white whitespace-nowrap">管理者コントロール</h3>
                 </div>
-                <div className="flex items-center bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs font-bold">
+                <div className="flex items-center bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-xs font-bold shrink-0">
                   <button
-                    onClick={() => setAdminTab('accounts')}
-                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                      adminTab === 'accounts' 
-                        ? 'bg-emerald-600 text-white shadow' 
-                        : 'text-zinc-400 hover:text-zinc-200'
+                    onClick={() => setAdminTab("accounts")}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                      adminTab === "accounts" 
+                        ? "bg-emerald-600 text-white shadow" 
+                        : "text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
-                    🔑 登録アカウント一覧
+                    🔑 アカウント一覧
                   </button>
                   <button
-                    onClick={() => { setAdminTab('logs'); fetchAdminAccessLogs(); }}
-                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                      adminTab === 'logs' 
-                        ? 'bg-emerald-600 text-white shadow' 
-                        : 'text-zinc-400 hover:text-zinc-200'
+                    onClick={() => { setAdminTab("logs"); fetchAdminAccessLogs(); }}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                      adminTab === "logs" 
+                        ? "bg-emerald-600 text-white shadow" 
+                        : "text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
-                    📜 アクセス・操作ログ
+                    📜 操作ログ
                   </button>
                   <button
-                    onClick={() => { setAdminTab('inquiries'); fetchAdminSupportList(); }}
-                    className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                      adminTab === 'inquiries' 
-                        ? 'bg-emerald-600 text-white shadow' 
-                        : 'text-zinc-400 hover:text-zinc-200'
+                    onClick={() => { setAdminTab("inquiries"); fetchAdminSupportList(); }}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      adminTab === "inquiries" 
+                        ? "bg-emerald-600 text-white shadow" 
+                        : "text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
-                    <span>📩 お問い合わせ受信・返信</span>
-                    {adminSupportList.filter(m => m.status === 'pending').length > 0 && (
+                    <span>📩 お問い合わせ</span>
+                    {adminSupportList.filter(m => m.status === "pending").length > 0 && (
                       <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
-                        {adminSupportList.filter(m => m.status === 'pending').length}
+                        {adminSupportList.filter(m => m.status === "pending").length}
                       </span>
                     )}
                   </button>
@@ -6849,28 +6849,30 @@ function App() {
               </div>
               <button 
                 onClick={() => setShowAdminPanel(false)}
-                className="text-zinc-500 hover:text-white text-xs font-bold px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg cursor-pointer transition-all"
+                className="text-zinc-400 hover:text-white text-xs font-bold px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg cursor-pointer transition-all shrink-0 border border-zinc-750"
               >
-                閉じる
+                ✕ 閉じる
               </button>
             </div>
 
             {/* Content (Scrollable) */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-6">
-              {adminTab === 'accounts' ? (
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
+              {adminTab === "accounts" ? (
                 <>
-                  {/* Account Creator Form */}
-                  <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl space-y-4">
-                    <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">➕ 新規チーム（アカウント）登録・更新</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  {/* Account Creator Form (Compact) */}
+                  <div className="bg-zinc-950/60 border border-zinc-850 p-3.5 sm:p-4 rounded-xl space-y-3">
+                    <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase flex items-center gap-1.5">
+                      <span>➕</span> 新規チーム（アカウント）手動登録
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] text-zinc-400 font-bold">ユーザーID</label>
                         <input
                           type="text"
                           placeholder="例: Team_Braves"
                           value={newTeamId}
-                          onChange={(e) => setNewTeamId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                          onChange={(e) => setNewTeamId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
                         />
                       </div>
                       <div className="flex flex-col gap-1">
@@ -6880,7 +6882,7 @@ function App() {
                           placeholder="パスワード"
                           value={newTeamPassword}
                           onChange={(e) => setNewTeamPassword(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
                         />
                       </div>
                       <div className="flex flex-col gap-1">
@@ -6890,7 +6892,7 @@ function App() {
                           placeholder="例: ブレーブス"
                           value={newTeamName}
                           onChange={(e) => setNewTeamName(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
                         />
                       </div>
                       <div className="flex flex-col gap-1">
@@ -6900,16 +6902,18 @@ function App() {
                           placeholder="例: team@example.com"
                           value={newTeamEmail}
                           onChange={(e) => setNewTeamEmail(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                         />
                       </div>
                     </div>
-                    <button
-                      onClick={handleAdminCreateTeam}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer text-center active:scale-98"
-                    >
-                      新しいアカウントを保存
-                    </button>
+                    <div className="flex justify-end pt-1">
+                      <button
+                        onClick={handleAdminCreateTeam}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
+                      >
+                        <span>💾</span> 新しいアカウントを保存
+                      </button>
+                    </div>
                   </div>
 
                   {/* Accounts List Table */}
@@ -6917,49 +6921,57 @@ function App() {
                     {/* Header & Filter Controls */}
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
-                        {adminAccountsList.filter(a => a.status === "pending").length > 0 && (
-                          <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
-                            🔔 承認待ち {adminAccountsList.filter(a => a.status === "pending").length} 件
+                        <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase whitespace-nowrap">👥 登録済みのチーム一覧</h4>
+                        {adminAccountsList.filter(a => a.status === "pending" || a.is_pending === true).length > 0 && (
+                          <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full animate-pulse whitespace-nowrap">
+                            🔔 新規承認待ち {adminAccountsList.filter(a => a.status === "pending" || a.is_pending === true).length} 件
                           </span>
                         )}
                       </div>
 
                       {/* Filter Buttons */}
-                      <div className="flex items-center gap-1.5 bg-zinc-950/60 p-1 rounded-xl border border-zinc-850 text-xs">
+                      <div className="flex items-center gap-1 bg-zinc-950/60 p-1 rounded-xl border border-zinc-850 text-xs flex-wrap">
                         <button
-                          onClick={() => setAdminAccountsFilter('ALL')}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
-                            adminAccountsFilter === 'ALL' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
+                          onClick={() => setAdminAccountsFilter("ALL")}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all whitespace-nowrap ${
+                            adminAccountsFilter === "ALL" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-white"
                           }`}
                         >
                           すべて ({adminAccountsList.length})
                         </button>
                         <button
-                          onClick={() => setAdminAccountsFilter('PENDING')}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
-                            adminAccountsFilter === 'PENDING' ? 'bg-amber-900 text-amber-200 border border-amber-700' : 'text-amber-400 hover:bg-amber-950/40'
+                          onClick={() => setAdminAccountsFilter("PENDING")}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all whitespace-nowrap ${
+                            adminAccountsFilter === "PENDING" ? "bg-amber-900 text-amber-200 border border-amber-700" : "text-amber-400 hover:bg-amber-950/40"
                           }`}
                         >
-                          🔔 承認待ち ({adminAccountsList.filter(a => !a.is_active).length})
+                          🔔 承認待ち ({adminAccountsList.filter(a => a.status === "pending" || a.is_pending === true).length})
                         </button>
                         <button
-                          onClick={() => setAdminAccountsFilter('ACTIVE')}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
-                            adminAccountsFilter === 'ACTIVE' ? 'bg-emerald-900 text-emerald-200 border border-emerald-700' : 'text-emerald-400 hover:bg-emerald-950/40'
+                          onClick={() => setAdminAccountsFilter("ACTIVE")}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all whitespace-nowrap ${
+                            adminAccountsFilter === "ACTIVE" ? "bg-emerald-900 text-emerald-200 border border-emerald-700" : "text-emerald-400 hover:bg-emerald-950/40"
                           }`}
                         >
                           🟢 契約中 ({adminAccountsList.filter(a => a.is_active).length})
                         </button>
+                        <button
+                          onClick={() => setAdminAccountsFilter("INACTIVE")}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all whitespace-nowrap ${
+                            adminAccountsFilter === "INACTIVE" ? "bg-rose-900 text-rose-200 border border-rose-700" : "text-rose-400 hover:bg-rose-950/40"
+                          }`}
+                        >
+                          ⛔ 停止中 ({adminAccountsList.filter(a => !a.is_active && a.status !== "pending" && a.is_pending !== true).length})
+                        </button>
                       </div>
                     </div>
 
-                    {/* Pending Approval Notice Banner */}
-                    {adminAccountsList.filter(a => !a.is_active).length > 0 && adminAccountsFilter !== 'ACTIVE' && (
+                    {/* Pending Approval Notice Banner (Only show when there is actually pending approval) */}
+                    {adminAccountsList.filter(a => a.status === "pending" || a.is_pending === true).length > 0 && adminAccountsFilter !== "ACTIVE" && (
                       <div className="bg-amber-950/30 border border-amber-800/60 p-3 rounded-xl flex items-center justify-between text-xs text-amber-200">
                         <div className="flex items-center gap-2">
                           <span className="text-base">🚨</span>
-                          <span>新規利用申請（承認待ち）が <strong>{adminAccountsList.filter(a => a.status === "pending").length} 件</strong> あります。「✅ 承認して有効化」を押すと利用開始できます。</span>
+                          <span>新規利用申請（承認待ち）が <strong>{adminAccountsList.filter(a => a.status === "pending" || a.is_pending === true).length} 件</strong> あります。「✅ 承認して有効化」を押すと利用開始できます。</span>
                         </div>
                       </div>
                     )}
@@ -6970,10 +6982,10 @@ function App() {
                       </p>
                     )}
                     
-                    <div className="border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-950/20">
+                    <div className="border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-950/40 shadow-inner">
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
-                          <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold whitespace-nowrap">
+                          <tr className="bg-zinc-950/90 border-b border-zinc-800 text-zinc-400 font-bold whitespace-nowrap">
                             <th className="p-3 whitespace-nowrap">ユーザーID</th>
                             <th className="p-3 whitespace-nowrap min-w-[100px]">チーム名</th>
                             <th className="p-3 whitespace-nowrap min-w-[180px]">メールアドレス (編集可能)</th>
@@ -6985,8 +6997,10 @@ function App() {
                         <tbody className="divide-y divide-zinc-850">
                           {adminAccountsList
                             .filter(acc => {
-                              if (adminAccountsFilter === 'PENDING') return acc.status === 'pending';
-                              if (adminAccountsFilter === 'ACTIVE') return acc.is_active;
+                              const isPending = acc.status === "pending" || acc.is_pending === true;
+                              if (adminAccountsFilter === "PENDING") return isPending;
+                              if (adminAccountsFilter === "ACTIVE") return acc.is_active;
+                              if (adminAccountsFilter === "INACTIVE") return !acc.is_active && !isPending;
                               return true;
                             })
                             .map((acc) => (
@@ -7006,7 +7020,7 @@ function App() {
                     </div>
                   </div>
                 </>
-              ) : adminTab === 'logs' ? (
+              ) : adminTab === "logs" ? (
                 /* ACCESS & AUDIT LOGS TAB */
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
@@ -7027,86 +7041,99 @@ function App() {
                   <div className="flex items-center gap-2 bg-zinc-950/60 p-2 rounded-xl border border-zinc-850 text-xs">
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider px-1">絞り込み:</span>
                     <button
-                      onClick={() => setAdminLogFilter('ALL')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'ALL' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+                      onClick={() => setAdminLogFilter("ALL")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === "ALL" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-white"}`}
                     >
                       すべて ({adminLogsList.length})
                     </button>
                     <button
-                      onClick={() => setAdminLogFilter('LOGIN_FAILED')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'LOGIN_FAILED' ? 'bg-rose-900 text-rose-200 border border-rose-700' : 'text-rose-400 hover:bg-rose-950/40'}`}
+                      onClick={() => setAdminLogFilter("LOGIN_FAILED")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === "LOGIN_FAILED" ? "bg-rose-900 text-rose-200 border border-rose-700" : "text-rose-400 hover:bg-rose-950/40"}`}
                     >
-                      🔴 ログイン失敗 ({adminLogsList.filter(l => l.action_type === 'LOGIN_FAILED').length})
+                      🔴 ログイン失敗 ({adminLogsList.filter(l => l.action_type === "LOGIN_FAILED").length})
                     </button>
                     <button
-                      onClick={() => setAdminLogFilter('LOGIN')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'LOGIN' ? 'bg-emerald-900 text-emerald-200 border border-emerald-700' : 'text-emerald-400 hover:bg-emerald-950/40'}`}
+                      onClick={() => setAdminLogFilter("LOGIN")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === "LOGIN" ? "bg-emerald-900 text-emerald-200 border border-emerald-700" : "text-emerald-400 hover:bg-emerald-950/40"}`}
                     >
-                      🟢 ログイン成功 ({adminLogsList.filter(l => l.action_type === 'LOGIN').length})
+                      🟢 ログイン成功 ({adminLogsList.filter(l => l.action_type === "LOGIN").length})
                     </button>
                     <button
-                      onClick={() => setAdminLogFilter('CSV_EXPORT')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'CSV_EXPORT' ? 'bg-sky-900 text-sky-200 border border-sky-700' : 'text-sky-400 hover:bg-sky-950/40'}`}
+                      onClick={() => setAdminLogFilter("CSV_EXPORT")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === "CSV_EXPORT" ? "bg-sky-900 text-sky-200 border border-sky-700" : "text-sky-400 hover:bg-sky-950/40"}`}
                     >
-                      📊 CSV出力 ({adminLogsList.filter(l => l.action_type === 'CSV_EXPORT').length})
+                      📁 CSV書き出し ({adminLogsList.filter(l => l.action_type === "CSV_EXPORT").length})
                     </button>
                     <button
-                      onClick={() => setAdminLogFilter('VIDEO_EXPORT')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === 'VIDEO_EXPORT' ? 'bg-amber-900 text-amber-200 border border-amber-700' : 'text-amber-400 hover:bg-amber-950/40'}`}
+                      onClick={() => setAdminLogFilter("VIDEO_EXPORT")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${adminLogFilter === "VIDEO_EXPORT" ? "bg-purple-900 text-purple-200 border border-purple-700" : "text-purple-400 hover:bg-purple-950/40"}`}
                     >
-                      🎬 動画書き出し ({adminLogsList.filter(l => l.action_type === 'VIDEO_EXPORT').length})
+                      📹 動画書き出し ({adminLogsList.filter(l => l.action_type === "VIDEO_EXPORT").length})
                     </button>
                   </div>
 
                   {/* Logs Table */}
-                  <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/20 max-h-[50vh] overflow-y-auto">
+                  <div className="border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-950/40">
                     <table className="w-full text-left border-collapse text-xs">
-                      <thead className="sticky top-0 bg-zinc-950 border-b border-zinc-800 text-zinc-400 font-bold z-10">
-                        <tr>
+                      <thead>
+                        <tr className="bg-zinc-950/90 border-b border-zinc-800 text-zinc-400 font-bold whitespace-nowrap">
                           <th className="p-3">日時</th>
-                          <th className="p-3">対象ユーザーID</th>
-                          <th className="p-3">操作種別</th>
-                          <th className="p-3">状態</th>
-                          <th className="p-3">詳細データ</th>
+                          <th className="p-3">チームID</th>
+                          <th className="p-3">種別</th>
+                          <th className="p-3">結果・ステータス</th>
+                          <th className="p-3">詳細情報</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-850">
-                        {adminLogsList.filter(l => adminLogFilter === 'ALL' || l.action_type === adminLogFilter).map((log) => {
-                          const dateStr = log.created_at ? new Date(log.created_at).toLocaleString('ja-JP') : '---';
-                          let actionBadge = <span className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded text-[9px] font-bold">{log.action_type}</span>;
-                          if (log.action_type === 'LOGIN') {
-                            actionBadge = <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 px-2 py-0.5 rounded text-[9px] font-extrabold">🟢 ログイン成功</span>;
-                          } else if (log.action_type === 'LOGIN_FAILED') {
-                            actionBadge = <span className="bg-rose-950 text-rose-400 border border-rose-900 px-2 py-0.5 rounded text-[9px] font-extrabold">🔴 ログイン失敗</span>;
-                          } else if (log.action_type === 'CSV_EXPORT') {
-                            actionBadge = <span className="bg-sky-950 text-sky-400 border border-sky-900 px-2 py-0.5 rounded text-[9px] font-extrabold">📊 CSVデータ出力</span>;
-                          } else if (log.action_type === 'VIDEO_EXPORT') {
-                            actionBadge = <span className="bg-amber-950 text-amber-400 border border-amber-900 px-2 py-0.5 rounded text-[9px] font-extrabold">🎬 動画/切り出し出力</span>;
-                          }
-
-                          return (
-                            <tr key={log.id} className="hover:bg-zinc-900/40 text-zinc-300">
-                              <td className="p-3 text-[11px] font-mono text-zinc-400 whitespace-nowrap">{dateStr}</td>
-                              <td className="p-3 font-mono font-extrabold text-white">{log.team_id}</td>
-                              <td className="p-3">{actionBadge}</td>
-                              <td className="p-3">
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${log.status === 'success' ? 'text-emerald-400 bg-emerald-950/40' : 'text-rose-400 bg-rose-950/40'}`}>
-                                  {log.status === 'success' ? '成功' : '失敗'}
-                                </span>
-                              </td>
-                              <td className="p-3 text-[10px] text-zinc-400 font-mono max-w-xs truncate">
-                                {log.details ? (
-                                  <span>
-                                    {log.details.reason && `理由: ${log.details.reason} `}
-                                    {log.details.rowCount && `件数: ${log.details.rowCount}行 `}
-                                    {log.details.clipCount && `クリップ数: ${log.details.clipCount}件 `}
-                                    {log.details.fileName && `ファイル: ${log.details.fileName} `}
+                      <tbody className="divide-y divide-zinc-850 font-mono text-[11px]">
+                        {adminLogsList
+                          .filter(log => {
+                            if (adminLogFilter === "LOGIN_FAILED") return log.action_type === "LOGIN_FAILED";
+                            if (adminLogFilter === "LOGIN") return log.action_type === "LOGIN";
+                            if (adminLogFilter === "CSV_EXPORT") return log.action_type === "CSV_EXPORT";
+                            if (adminLogFilter === "VIDEO_EXPORT") return log.action_type === "VIDEO_EXPORT";
+                            return true;
+                          })
+                          .map((log) => {
+                            const isFail = log.status === "failure" || log.action_type === "LOGIN_FAILED";
+                            return (
+                              <tr key={log.id} className={`hover:bg-zinc-900/60 transition-colors ${isFail ? "bg-rose-950/15" : ""}`}>
+                                <td className="p-3 text-zinc-400 whitespace-nowrap">
+                                  {new Date(log.created_at).toLocaleString("ja-JP")}
+                                </td>
+                                <td className="p-3 font-bold text-white whitespace-nowrap">
+                                  {log.team_id || "---"}
+                                </td>
+                                <td className="p-3 whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                    log.action_type === "LOGIN" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
+                                    log.action_type === "LOGIN_FAILED" ? "bg-rose-950 text-rose-400 border border-rose-900" :
+                                    log.action_type === "CSV_EXPORT" ? "bg-sky-950 text-sky-400 border border-sky-900" :
+                                    log.action_type === "VIDEO_EXPORT" ? "bg-purple-950 text-purple-400 border border-purple-900" :
+                                    "bg-zinc-800 text-zinc-300"
+                                  }`}>
+                                    {log.action_type}
                                   </span>
-                                ) : '---'}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                                </td>
+                                <td className="p-3 whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    log.status === "success" ? "text-emerald-400" : "text-rose-400 font-black"
+                                  }`}>
+                                    {log.status === "success" ? "成功" : "失敗"}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-zinc-300 font-sans text-xs">
+                                  {log.details ? (
+                                    <span className="text-[10px] text-zinc-400">
+                                      {log.details.reason && `理由: ${log.details.reason} `}
+                                      {log.details.rowCount && `件数: ${log.details.rowCount}行 `}
+                                      {log.details.clipCount && `クリップ数: ${log.details.clipCount}件 `}
+                                      {log.details.fileName && `ファイル: ${log.details.fileName} `}
+                                    </span>
+                                  ) : "---"}
+                                </td>
+                              </tr>
+                            );
+                          })}
 
                         {adminLogsList.length === 0 && (
                           <tr>
@@ -7143,9 +7170,9 @@ function App() {
                     <div className="space-y-4">
                       {adminSupportList.map((msg) => (
                         <div key={msg.id} className={`p-4 rounded-xl border space-y-3 ${
-                          msg.status === 'pending'
-                            ? 'bg-zinc-900/90 border-amber-500/50 shadow-lg shadow-amber-950/20'
-                            : 'bg-zinc-950/60 border-zinc-800'
+                          msg.status === "pending"
+                            ? "bg-zinc-900/90 border-amber-500/50 shadow-lg shadow-amber-950/20"
+                            : "bg-zinc-950/60 border-zinc-800"
                         }`}>
                           <div className="flex justify-between items-center border-b border-zinc-800/80 pb-2">
                             <div className="flex items-center gap-2">
@@ -7153,15 +7180,15 @@ function App() {
                                 チーム: {msg.team_id}
                               </span>
                               <span className={`text-[9px] font-black px-2 py-0.5 rounded ${
-                                msg.status === 'replied'
-                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-900'
-                                  : 'bg-rose-950 text-rose-400 border border-rose-900 animate-pulse'
+                                msg.status === "replied"
+                                  ? "bg-emerald-950 text-emerald-400 border border-emerald-900"
+                                  : "bg-rose-950 text-rose-400 border border-rose-900 animate-pulse"
                               }`}>
-                                {msg.status === 'replied' ? '✅ 返信済み' : '🔴 未対応 (返信待ち)'}
+                                {msg.status === "replied" ? "✅ 返信済み" : "🔴 未対応 (返信待ち)"}
                               </span>
                             </div>
                             <span className="text-[10px] text-zinc-400 font-mono">
-                              {new Date(msg.created_at).toLocaleString('ja-JP')}
+                              {new Date(msg.created_at).toLocaleString("ja-JP")}
                             </span>
                           </div>
 
@@ -7176,7 +7203,7 @@ function App() {
                           {msg.reply && (
                             <div className="bg-emerald-950/30 border border-emerald-900/50 p-3 rounded-lg space-y-1">
                               <p className="text-[9px] text-emerald-400 font-extrabold flex items-center gap-1">
-                                <span>💬</span> 管理者からの返信済みメッセージ ({msg.replied_at ? new Date(msg.replied_at).toLocaleString('ja-JP') : ''})
+                                <span>💬</span> 管理者からの返信済みメッセージ ({msg.replied_at ? new Date(msg.replied_at).toLocaleString("ja-JP") : ""})
                               </p>
                               <p className="text-xs text-emerald-200 font-bold whitespace-pre-wrap">{msg.reply}</p>
                             </div>
@@ -7185,12 +7212,12 @@ function App() {
                           {/* Reply Form */}
                           <div className="pt-2 border-t border-zinc-850 space-y-2">
                             <label className="text-[10px] font-bold text-zinc-400 block">
-                              ✍️ {msg.reply ? '返信内容を上書き・再更新する:' : 'このチームへ返信を入力:'}
+                              ✍️ {msg.reply ? "返信内容を上書き・再更新する:" : "このチームへ返信を入力:"}
                             </label>
                             <textarea
                               rows={2}
                               placeholder="返信内容をご記入ください（送信すると利用者のアプリ画面に表示されます）"
-                              value={adminReplyTextMap[msg.id] || ''}
+                              value={adminReplyTextMap[msg.id] || ""}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 setAdminReplyTextMap(prev => ({ ...prev, [msg.id]: val }));
@@ -7216,6 +7243,7 @@ function App() {
           </div>
         </div>
       )}
+
       {/* Confirm Delete Account Modal */}
       {confirmDeleteId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
