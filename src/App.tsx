@@ -6801,7 +6801,7 @@ function App() {
       {/* 5. ADMINISTRATOR PANEL MODAL */}
       {showAdminPanel && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative">
             {/* Header with Tabs */}
             <div className="px-6 py-3.5 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
               <div className="flex items-center gap-4">
@@ -6918,9 +6918,9 @@ function App() {
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                       <div className="flex items-center gap-2">
                         <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
-                        {adminAccountsList.filter(a => !a.is_active).length > 0 && (
+                        {adminAccountsList.filter(a => a.status === "pending").length > 0 && (
                           <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
-                            🔔 承認待ち {adminAccountsList.filter(a => !a.is_active).length} 件
+                            🔔 承認待ち {adminAccountsList.filter(a => a.status === "pending").length} 件
                           </span>
                         )}
                       </div>
@@ -6959,7 +6959,7 @@ function App() {
                       <div className="bg-amber-950/30 border border-amber-800/60 p-3 rounded-xl flex items-center justify-between text-xs text-amber-200">
                         <div className="flex items-center gap-2">
                           <span className="text-base">🚨</span>
-                          <span>新規利用申請（承認待ち）が <strong>{adminAccountsList.filter(a => !a.is_active).length} 件</strong> あります。「✅ 承認して有効化」を押すと利用開始できます。</span>
+                          <span>新規利用申請（承認待ち）が <strong>{adminAccountsList.filter(a => a.status === "pending").length} 件</strong> あります。「✅ 承認して有効化」を押すと利用開始できます。</span>
                         </div>
                       </div>
                     )}
@@ -6970,22 +6970,22 @@ function App() {
                       </p>
                     )}
                     
-                    <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/20">
+                    <div className="border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-950/20">
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
-                          <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold">
-                            <th className="p-3">ユーザーID</th>
-                            <th className="p-3">チーム名</th>
-                            <th className="p-3">メールアドレス (編集可能)</th>
-                            <th className="p-3">パスワード</th>
-                            <th className="p-3 text-center">状態</th>
-                            <th className="p-3 text-right">操作</th>
+                          <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold whitespace-nowrap">
+                            <th className="p-3 whitespace-nowrap">ユーザーID</th>
+                            <th className="p-3 whitespace-nowrap min-w-[100px]">チーム名</th>
+                            <th className="p-3 whitespace-nowrap min-w-[180px]">メールアドレス (編集可能)</th>
+                            <th className="p-3 whitespace-nowrap min-w-[140px]">パスワード</th>
+                            <th className="p-3 text-center whitespace-nowrap min-w-[90px]">契約状態</th>
+                            <th className="p-3 text-right whitespace-nowrap min-w-[160px]">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-850">
                           {adminAccountsList
                             .filter(acc => {
-                              if (adminAccountsFilter === 'PENDING') return !acc.is_active;
+                              if (adminAccountsFilter === 'PENDING') return acc.status === 'pending';
                               if (adminAccountsFilter === 'ACTIVE') return acc.is_active;
                               return true;
                             })
@@ -7429,17 +7429,17 @@ export default App;
 
 // Admin Table Account Row Component with masked password editing, email inline editing, approve action, toggle eye, temp password support, and explicit save button
 const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGenerateTempPassword, onToggleActive, onDelete }: any) => {
-  const [pass, setPass] = useState(acc.password || '');
+  const [pass, setPass] = useState(acc.password || "");
   const [showPass, setShowPass] = useState(false);
   const [isPassModified, setIsPassModified] = useState(false);
 
-  const [emailVal, setEmailVal] = useState(acc.email || '');
+  const [emailVal, setEmailVal] = useState(acc.email || "");
   const [isEmailModified, setIsEmailModified] = useState(false);
 
   useEffect(() => {
-    setPass(acc.password || '');
+    setPass(acc.password || "");
     setIsPassModified(false);
-    setEmailVal(acc.email || '');
+    setEmailVal(acc.email || "");
     setIsEmailModified(false);
   }, [acc.password, acc.email]);
 
@@ -7461,19 +7461,22 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGe
     ? Math.ceil((new Date(acc.temp_password_expires_at).getTime() - Date.now()) / 60000)
     : 0;
 
+  // Distinctly determine status: Active vs Pending Approval vs Manually Stopped
+  const isPending = acc.status === "pending" || acc.is_pending === true;
+
   return (
-    <tr className={`hover:bg-zinc-900/40 text-zinc-300 transition-colors ${!acc.is_active ? 'bg-amber-950/10' : ''}`}>
+    <tr className={`hover:bg-zinc-900/40 text-zinc-300 transition-colors whitespace-nowrap ${isPending ? "bg-amber-950/15" : !acc.is_active ? "bg-rose-950/10" : ""}`}>
       {/* ID & Badges */}
-      <td className="p-3 font-mono font-bold text-white">
-        <div className="flex items-center gap-1.5 flex-wrap">
+      <td className="p-3 font-mono font-bold text-white whitespace-nowrap">
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
           <span>{acc.id}</span>
-          {acc.id === 'admin' && (
-            <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 text-[9px] px-1.5 py-0.5 rounded font-extrabold">
+          {acc.id === "admin" && (
+            <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 text-[9px] px-1.5 py-0.5 rounded font-extrabold whitespace-nowrap">
               管理者
             </span>
           )}
-          {!acc.is_active && (
-            <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black animate-pulse">
+          {isPending && (
+            <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black animate-pulse whitespace-nowrap">
               承認待ち
             </span>
           )}
@@ -7481,11 +7484,11 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGe
       </td>
 
       {/* Team Name */}
-      <td className="p-3 font-bold">{acc.team_name || '---'}</td>
+      <td className="p-3 font-bold text-zinc-200 whitespace-nowrap">{acc.team_name || "---"}</td>
 
       {/* Email Address with Inline Edit & Save */}
-      <td className="p-3">
-        <div className="flex items-center gap-1.5">
+      <td className="p-3 whitespace-nowrap">
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
           <input
             type="email"
             placeholder="メール未登録"
@@ -7495,16 +7498,16 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGe
               setIsEmailModified(true);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && isEmailModified) {
+              if (e.key === "Enter" && isEmailModified) {
                 handleSaveEmail();
               }
             }}
-            className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs font-mono text-zinc-200 w-36 sm:w-44 focus:outline-none focus:border-emerald-500"
+            className="bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs font-mono text-zinc-200 w-44 focus:outline-none focus:border-emerald-500"
           />
           {isEmailModified && (
             <button
               onClick={handleSaveEmail}
-              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap active:scale-95"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap active:scale-95"
             >
               保存
             </button>
@@ -7513,29 +7516,29 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGe
       </td>
 
       {/* Password with Eye Toggle & Save */}
-      <td className="p-3">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5">
+      <td className="p-3 whitespace-nowrap">
+        <div className="flex flex-col gap-1 whitespace-nowrap">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
             <div className="relative flex items-center">
               <input
-                type={showPass ? 'text' : 'password'}
+                type={showPass ? "text" : "password"}
                 value={showPass && hasValidTempPass ? acc.temp_password : pass}
                 onChange={(e) => {
                   setPass(e.target.value);
                   setIsPassModified(true);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && isPassModified) {
+                  if (e.key === "Enter" && isPassModified) {
                     handleSavePassword();
                   }
                 }}
-                className={`bg-zinc-900 border ${hasValidTempPass ? 'border-amber-600/70 text-amber-300' : 'border-zinc-800 text-white'} rounded pl-2 pr-7 py-1 text-xs font-mono font-bold w-28 text-center focus:outline-none focus:border-emerald-500`}
+                className={`bg-zinc-900 border ${hasValidTempPass ? "border-amber-600/70 text-amber-300" : "border-zinc-800 text-white"} rounded pl-2.5 pr-7 py-1 text-xs font-mono font-bold w-28 text-center focus:outline-none focus:border-emerald-500`}
               />
               <button
                 type="button"
                 onClick={() => setShowPass(!showPass)}
                 className="absolute right-1.5 text-zinc-400 hover:text-white p-0.5 cursor-pointer transition-colors"
-                title={showPass ? 'パスワードを隠す' : 'パスワードを表示'}
+                title={showPass ? "パスワードを隠す" : "パスワードを表示"}
               >
                 {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -7543,66 +7546,87 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGe
             {isPassModified && (
               <button
                 onClick={handleSavePassword}
-                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap active:scale-95"
               >
                 保存
               </button>
             )}
           </div>
           {hasValidTempPass && (
-            <p className="text-[9px] text-amber-400 font-bold flex items-center gap-1">
+            <p className="text-[9px] text-amber-400 font-bold flex items-center gap-1 whitespace-nowrap">
               ⚡ 一時パス有効中 (残り{tempMinutesLeft}分)
             </p>
           )}
         </div>
       </td>
 
-      {/* Subscription / Active Status */}
-      <td className="p-3 text-center">
-        <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
-          acc.is_active 
-            ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' 
-            : 'bg-amber-950 text-amber-400 border border-amber-900'
-        }`}>
-          {acc.is_active ? 'アクティブ' : '承認待ち/停止'}
-        </span>
+      {/* Distinct Subscription / Active Status Badge */}
+      <td className="p-3 text-center whitespace-nowrap">
+        {acc.is_active ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            契約中
+          </span>
+        ) : isPending ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-950 text-amber-300 border border-amber-800 whitespace-nowrap animate-pulse">
+            <span>⏳</span>
+            承認待ち
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-950 text-rose-400 border border-rose-900 whitespace-nowrap">
+            <span>⛔</span>
+            停止中
+          </span>
+        )}
       </td>
 
       {/* Action Buttons */}
-      <td className="p-3 text-right">
-        <div className="flex items-center justify-end gap-1.5 flex-wrap">
-          {/* Quick Approve Button for Pending Accounts */}
-          {!acc.is_active && (
+      <td className="p-3 text-right whitespace-nowrap">
+        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+          {/* Quick Approve Button for Pending Signup Accounts */}
+          {isPending && (
             <button
               onClick={() => onApprove(acc.id)}
-              className="px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40 flex items-center gap-1 active:scale-95"
+              className="px-3 py-1 rounded-lg text-[10px] font-black cursor-pointer transition-all bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40 flex items-center gap-1 active:scale-95 whitespace-nowrap"
               title="アカウントを承認して利用開始可能にします"
             >
               ✅ 承認して有効化
             </button>
           )}
 
+          {/* Emergency Temporary Password Button */}
           <button
             onClick={() => onGenerateTempPassword(acc.id)}
-            className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800/60 flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800/60 flex items-center gap-1 whitespace-nowrap"
             title="30分間だけ有効な緊急・復旧用一時パスワードを発行します"
           >
             ⚡ 一時パス
           </button>
 
-          {acc.id !== 'admin' && acc.is_active && (
-            <button
-              onClick={() => onToggleActive(acc.id, acc.is_active)}
-              className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-zinc-800 hover:bg-rose-950 text-zinc-400 hover:text-rose-400 border border-zinc-700 hover:border-rose-900"
-            >
-              停止
-            </button>
+          {/* Toggle Active / Stop / Resume Button */}
+          {acc.id !== "admin" && (
+            acc.is_active ? (
+              <button
+                onClick={() => onToggleActive(acc.id, acc.is_active)}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all bg-zinc-800 hover:bg-rose-950 text-zinc-400 hover:text-rose-400 border border-zinc-700 hover:border-rose-900 whitespace-nowrap"
+              >
+                契約停止
+              </button>
+            ) : !isPending ? (
+              <button
+                onClick={() => onToggleActive(acc.id, acc.is_active)}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-900 whitespace-nowrap"
+              >
+                再開する
+              </button>
+            ) : null
           )}
           
-          {acc.id !== 'admin' && (
+          {/* Delete Account Button */}
+          {acc.id !== "admin" && (
             <button
               onClick={() => onDelete(acc.id)}
-              className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900"
+              className="px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900 whitespace-nowrap"
               title="アカウントを削除します"
             >
               🗑 削除
