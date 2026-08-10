@@ -772,16 +772,16 @@ const TAG_GROUPS: { [group: string]: string[] } = {
 function App() {
   const [currentUser, setCurrentUser] = useState<string>(() => window.localStorage.getItem('sportscode_current_user') || '');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => window.localStorage.getItem('sportscode_is_logged_in') === 'true');
-  const [usersDb] = useState<{ [key: string]: { name: string; password?: string; email?: string } }>(() => {
+  const [usersDb] = useState<{ [key: string]: { name: string; password?: string; email?: string | null; is_active?: boolean } }>(() => {
     try {
       const saved = window.localStorage.getItem('sportscode_users_db');
       if (saved) return JSON.parse(saved);
     } catch {}
     return {
-      'default': { name: 'デフォルトアカウント', password: '' },
-      'baseball_team_a': { name: 'Aチーム監督', password: '123' },
-      'baseball_team_b': { name: 'Bチーム監督', password: '123' },
-      'admin': { name: 'システム管理者', password: 'admin' }
+      'default': { name: 'デフォルトアカウント', password: '', is_active: true },
+      'baseball_team_a': { name: 'Aチーム監督', password: '123', is_active: true },
+      'baseball_team_b': { name: 'Bチーム監督', password: '123', is_active: true },
+      'admin': { name: 'システム管理者', password: 'admin', is_active: true }
     };
   });
 
@@ -789,10 +789,28 @@ function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
+  // User Signup / Registration Request states
+  const [isRegisterMode, setIsRegisterMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mode') === 'register' || params.get('register') === 'true';
+    }
+    return false;
+  });
+  const [regUserId, setRegUserId] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regPasswordConfirm, setRegPasswordConfirm] = useState('');
+  const [regTeamName, setRegTeamName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regError, setRegError] = useState<string | null>(null);
+  const [regSuccess, setRegSuccess] = useState(false);
+  const [regLoading, setRegLoading] = useState(false);
+
   // Administrator Account Management panel & Audit Log states
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminTab, setAdminTab] = useState<'accounts' | 'logs' | 'inquiries'>('accounts');
   const [adminAccountsList, setAdminAccountsList] = useState<any[]>([]);
+  const [adminAccountsFilter, setAdminAccountsFilter] = useState<'ALL' | 'PENDING' | 'ACTIVE'>('ALL');
   const [adminLogsList, setAdminLogsList] = useState<any[]>([]);
   const [adminLogFilter, setAdminLogFilter] = useState<'ALL' | 'LOGIN' | 'LOGIN_FAILED' | 'CSV_EXPORT' | 'VIDEO_EXPORT'>('ALL');
   const [adminPanelError, setAdminPanelError] = useState<string | null>(null);
@@ -1166,6 +1184,47 @@ function App() {
     fetchAdminAccounts();
   };
 
+  const handleAdminUpdateEmail = async (id: string, newEmail: string) => {
+    const trimmedEmail = newEmail.trim() || null;
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .update({ email: trimmedEmail })
+        .eq('id', id);
+      if (error) {
+        alert('メールアドレスの保存に失敗しました: ' + error.message);
+        return;
+      }
+    } else {
+      if (usersDb[id]) {
+        usersDb[id].email = trimmedEmail;
+        window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+      }
+    }
+    showToast(`📧 アカウント「${id}」のメールアドレスを保存しました`);
+    fetchAdminAccounts();
+  };
+
+  const handleAdminApproveAccount = async (id: string) => {
+    if (supabase) {
+      const { error } = await supabase
+        .from('team_accounts')
+        .update({ is_active: true })
+        .eq('id', id);
+      if (error) {
+        alert('承認処理に失敗しました: ' + error.message);
+        return;
+      }
+    } else {
+      if (usersDb[id]) {
+        usersDb[id].is_active = true;
+        window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+      }
+    }
+    showToast(`✅ アカウント「${id}」を承認し、利用開始可能にしました！`);
+    fetchAdminAccounts();
+  };
+
   const handleAdminToggleActive = async (id: string, currentStatus: boolean) => {
     if (supabase) {
       const { error } = await supabase
@@ -1317,6 +1376,101 @@ function App() {
     }
   };
 
+  const handlePerformRegister = async () => {
+    setRegError(null);
+    const trimmedId = regUserId.trim();
+    const trimmedPass = regPassword.trim();
+    const trimmedPassConfirm = regPasswordConfirm.trim();
+    const trimmedTeam = regTeamName.trim();
+    const trimmedEmail = regEmail.trim();
+
+    if (!trimmedId) {
+      setRegError('ユーザーIDを入力してください（半角英数字、アンダースコア等）');
+      return;
+    }
+    if (trimmedId.length < 3) {
+      setRegError('ユーザーIDは3文字以上で入力してください');
+      return;
+    }
+    if (!trimmedPass) {
+      setRegError('パスワードを入力してください');
+      return;
+    }
+    if (trimmedPass.length < 6) {
+      setRegError('パスワードは6文字以上で入力してください');
+      return;
+    }
+    if (trimmedPass !== trimmedPassConfirm) {
+      setRegError('パスワードと確認用パスワードが一致しません');
+      return;
+    }
+    if (!trimmedTeam) {
+      setRegError('チーム名または組織名を入力してください');
+      return;
+    }
+    if (!trimmedEmail) {
+      setRegError('ご連絡先メールアドレスを入力してください');
+      return;
+    }
+
+    setRegLoading(true);
+
+    try {
+      if (supabase) {
+        // 1. Try to insert with is_active = false (Pending admin approval)
+        let { error } = await supabase
+          .from('team_accounts')
+          .insert({
+            id: trimmedId,
+            password: trimmedPass,
+            team_name: trimmedTeam,
+            email: trimmedEmail,
+            is_active: false
+          });
+
+        if (error && (error.message.includes("Could not find the 'email' column") || error.code === 'PGRST204')) {
+          const fallbackRes = await supabase
+            .from('team_accounts')
+            .insert({
+              id: trimmedId,
+              password: trimmedPass,
+              team_name: trimmedTeam,
+              is_active: false
+            });
+          error = fallbackRes.error;
+        }
+
+        if (error) {
+          if (error.message.includes('duplicate key') || error.code === '23505') {
+            setRegError(`⚠️ ユーザーID「${trimmedId}」は既に使われています。別のIDをご指定ください。`);
+          } else {
+            setRegError('登録申請に失敗しました: ' + error.message);
+          }
+          setRegLoading(false);
+          return;
+        }
+      } else {
+        // Local offline fallback
+        if (usersDb[trimmedId]) {
+          setRegError(`⚠️ ユーザーID「${trimmedId}」は既に使われています。`);
+          setRegLoading(false);
+          return;
+        }
+        usersDb[trimmedId] = { name: trimmedTeam, password: trimmedPass, email: trimmedEmail, is_active: false };
+        window.localStorage.setItem('sportscode_users_db', JSON.stringify(usersDb));
+      }
+
+      // Log registration application event
+      logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { teamName: trimmedTeam, email: trimmedEmail, note: 'User Signup Request Submitted (Pending Approval)' });
+
+      setRegSuccess(true);
+    } catch (err: any) {
+      setRegError('通信エラーが発生しました: ' + (err?.message || String(err)));
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
   const handlePerformLogin = async () => {
     const trimmedId = inputUserId.trim();
     if (!trimmedId) {
@@ -1353,8 +1507,8 @@ function App() {
 
     if (databaseExists && supabaseUser) {
       if (!supabaseUser.is_active) {
-        logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { reason: 'Account inactive' });
-        setLoginError('サブスクリプションの有効期限が切れています。管理側にお問い合わせください。');
+        logAccessEvent(trimmedId, 'LOGIN_FAILED', 'failed', { reason: 'Account inactive / pending approval' });
+        setLoginError('⏳ このアカウントは現在【管理者承認待ち】です。運営者の承認完了後にログイン可能になります。');
         return;
       }
 
@@ -4391,8 +4545,141 @@ function App() {
     );
   }
 
-  // --- USER AUTHENTICATION / LOGIN OVERLAY (Blocks Main & Code Windows if not logged in) ---
+  // --- USER AUTHENTICATION / LOGIN & SIGNUP OVERLAY (Blocks Main & Code Windows if not logged in) ---
   if (!isLoggedIn) {
+    if (isRegisterMode) {
+      return (
+        <div className="fixed inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900/95 border border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl flex flex-col gap-5 relative overflow-hidden backdrop-blur-xl max-h-[95vh] overflow-y-auto">
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-600/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-teal-600/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="text-center">
+              <div className="mx-auto w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center text-xl shadow-lg shadow-emerald-950/40">
+                📝
+              </div>
+              <h2 className="text-base sm:text-lg font-black text-white mt-3 tracking-tight">新規チーム・アカウント利用申請</h2>
+              <p className="text-[11px] text-zinc-400 mt-1">
+                ご希望のID・秘密のパスワードを入力して申請してください。<br className="hidden sm:inline" />
+                運営者の承認後にすぐご利用いただけます。
+              </p>
+            </div>
+
+            {regSuccess ? (
+              <div className="bg-emerald-950/40 border border-emerald-800/60 p-5 rounded-2xl text-center space-y-3 animate-in fade-in zoom-in duration-200">
+                <div className="text-3xl">🎉</div>
+                <h3 className="text-sm font-black text-emerald-300">利用申請を受け付けました！</h3>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  ユーザーID「<span className="font-mono font-bold text-white">{regUserId}</span>」の申請を送信しました。<br />
+                  管理者による承認完了後、ご自身で設定されたパスワードでログイン可能になります。
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setIsRegisterMode(false);
+                      setInputUserId(regUserId);
+                      setRegSuccess(false);
+                    }}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer"
+                  >
+                    ログイン画面へ戻る
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* User ID */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-zinc-400">希望ユーザーID (半角英数・記号)</label>
+                  <input
+                    type="text"
+                    placeholder="例: Team_Braves"
+                    value={regUserId}
+                    onChange={(e) => setRegUserId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
+                  />
+                </div>
+
+                {/* Team Name */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-zinc-400">チーム名 / 組織名</label>
+                  <input
+                    type="text"
+                    placeholder="例: ○○大学野球部"
+                    value={regTeamName}
+                    onChange={(e) => setRegTeamName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
+
+                {/* Email Address */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-zinc-400">ご連絡先メールアドレス (承認・復旧用)</label>
+                  <input
+                    type="email"
+                    placeholder="例: coach@example.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+
+                {/* Password Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-zinc-400">パスワード (6文字以上)</label>
+                    <input
+                      type="password"
+                      placeholder="パスワード"
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-zinc-400">確認用パスワード</label>
+                    <input
+                      type="password"
+                      placeholder="もう一度入力"
+                      value={regPasswordConfirm}
+                      onChange={(e) => setRegPasswordConfirm(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
+                    />
+                  </div>
+                </div>
+
+                {regError && (
+                  <p className="text-[10px] text-rose-400 font-bold text-center bg-rose-950/30 p-2.5 rounded-xl border border-rose-900/40">
+                    ⚠️ {regError}
+                  </p>
+                )}
+
+                <button
+                  onClick={handlePerformRegister}
+                  disabled={regLoading}
+                  className="w-full py-2.5 mt-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-emerald-950/30 cursor-pointer text-center active:scale-98"
+                >
+                  {regLoading ? '申請中...' : '利用申請を送信する'}
+                </button>
+
+                <div className="text-center pt-1 border-t border-zinc-800/80">
+                  <button
+                    onClick={() => {
+                      setIsRegisterMode(false);
+                      setRegError(null);
+                    }}
+                    className="text-[11px] text-zinc-400 hover:text-emerald-400 font-bold transition-colors cursor-pointer"
+                  >
+                    ◀ 既にアカウントをお持ちの方（ログインはこちら）
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black z-50 flex items-center justify-center p-4">
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col gap-6 relative overflow-hidden backdrop-blur-xl">
@@ -4439,7 +4726,7 @@ function App() {
             </div>
 
             {loginError && (
-              <p className="text-[10px] text-rose-500 font-bold text-center bg-rose-950/20 p-2 rounded-lg border border-rose-900/30">
+              <p className="text-[10px] text-rose-500 font-bold text-center bg-rose-950/20 p-2.5 rounded-xl border border-rose-900/30">
                 ⚠️ {loginError}
               </p>
             )}
@@ -4451,6 +4738,18 @@ function App() {
           >
             ログイン
           </button>
+
+          <div className="text-center pt-2 border-t border-zinc-800/80">
+            <button
+              onClick={() => {
+                setIsRegisterMode(true);
+                setLoginError(null);
+              }}
+              className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold transition-colors cursor-pointer flex items-center justify-center gap-1 mx-auto"
+            >
+              <span>✨ アカウントをお持ちでない方（新規利用申請）</span>
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -6614,8 +6913,57 @@ function App() {
                   </div>
 
                   {/* Accounts List Table */}
-                  <div className="space-y-2">
-                    <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
+                  <div className="space-y-3">
+                    {/* Header & Filter Controls */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-[11px] font-bold text-zinc-400 tracking-wider uppercase">👥 登録済みのチーム一覧</h4>
+                        {adminAccountsList.filter(a => !a.is_active).length > 0 && (
+                          <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                            🔔 承認待ち {adminAccountsList.filter(a => !a.is_active).length} 件
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Filter Buttons */}
+                      <div className="flex items-center gap-1.5 bg-zinc-950/60 p-1 rounded-xl border border-zinc-850 text-xs">
+                        <button
+                          onClick={() => setAdminAccountsFilter('ALL')}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                            adminAccountsFilter === 'ALL' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          すべて ({adminAccountsList.length})
+                        </button>
+                        <button
+                          onClick={() => setAdminAccountsFilter('PENDING')}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                            adminAccountsFilter === 'PENDING' ? 'bg-amber-900 text-amber-200 border border-amber-700' : 'text-amber-400 hover:bg-amber-950/40'
+                          }`}
+                        >
+                          🔔 承認待ち ({adminAccountsList.filter(a => !a.is_active).length})
+                        </button>
+                        <button
+                          onClick={() => setAdminAccountsFilter('ACTIVE')}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                            adminAccountsFilter === 'ACTIVE' ? 'bg-emerald-900 text-emerald-200 border border-emerald-700' : 'text-emerald-400 hover:bg-emerald-950/40'
+                          }`}
+                        >
+                          🟢 契約中 ({adminAccountsList.filter(a => a.is_active).length})
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Pending Approval Notice Banner */}
+                    {adminAccountsList.filter(a => !a.is_active).length > 0 && adminAccountsFilter !== 'ACTIVE' && (
+                      <div className="bg-amber-950/30 border border-amber-800/60 p-3 rounded-xl flex items-center justify-between text-xs text-amber-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🚨</span>
+                          <span>新規利用申請（承認待ち）が <strong>{adminAccountsList.filter(a => !a.is_active).length} 件</strong> あります。「✅ 承認して有効化」を押すと利用開始できます。</span>
+                        </div>
+                      </div>
+                    )}
+
                     {adminPanelError && (
                       <p className="text-xs text-rose-500 font-bold bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-lg">
                         ⚠️ {adminPanelError}
@@ -6628,23 +6976,31 @@ function App() {
                           <tr className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-bold">
                             <th className="p-3">ユーザーID</th>
                             <th className="p-3">チーム名</th>
-                            <th className="p-3">メールアドレス</th>
+                            <th className="p-3">メールアドレス (編集可能)</th>
                             <th className="p-3">パスワード</th>
-                            <th className="p-3 text-center">サブスク状態</th>
+                            <th className="p-3 text-center">状態</th>
                             <th className="p-3 text-right">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-850">
-                          {adminAccountsList.map((acc) => (
-                            <AdminAccountRow
-                              key={acc.id}
-                              acc={acc}
-                              onUpdatePassword={handleAdminUpdatePassword}
-                              onGenerateTempPassword={handleGenerateTempPassword}
-                              onToggleActive={handleAdminToggleActive}
-                              onDelete={setConfirmDeleteId}
-                            />
-                          ))}
+                          {adminAccountsList
+                            .filter(acc => {
+                              if (adminAccountsFilter === 'PENDING') return !acc.is_active;
+                              if (adminAccountsFilter === 'ACTIVE') return acc.is_active;
+                              return true;
+                            })
+                            .map((acc) => (
+                              <AdminAccountRow
+                                key={acc.id}
+                                acc={acc}
+                                onUpdatePassword={handleAdminUpdatePassword}
+                                onUpdateEmail={handleAdminUpdateEmail}
+                                onApprove={handleAdminApproveAccount}
+                                onGenerateTempPassword={handleGenerateTempPassword}
+                                onToggleActive={handleAdminToggleActive}
+                                onDelete={setConfirmDeleteId}
+                              />
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -7071,20 +7427,30 @@ function App() {
 
 export default App;
 
-// Admin Table Account Row Component with masked password editing, toggle eye, temp password support, and explicit save button
-const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onToggleActive, onDelete }: any) => {
+// Admin Table Account Row Component with masked password editing, email inline editing, approve action, toggle eye, temp password support, and explicit save button
+const AdminAccountRow = ({ acc, onUpdatePassword, onUpdateEmail, onApprove, onGenerateTempPassword, onToggleActive, onDelete }: any) => {
   const [pass, setPass] = useState(acc.password || '');
   const [showPass, setShowPass] = useState(false);
-  const [isModified, setIsModified] = useState(false);
+  const [isPassModified, setIsPassModified] = useState(false);
+
+  const [emailVal, setEmailVal] = useState(acc.email || '');
+  const [isEmailModified, setIsEmailModified] = useState(false);
 
   useEffect(() => {
     setPass(acc.password || '');
-    setIsModified(false);
-  }, [acc.password]);
+    setIsPassModified(false);
+    setEmailVal(acc.email || '');
+    setIsEmailModified(false);
+  }, [acc.password, acc.email]);
 
-  const handleSave = () => {
+  const handleSavePassword = () => {
     onUpdatePassword(acc.id, pass);
-    setIsModified(false);
+    setIsPassModified(false);
+  };
+
+  const handleSaveEmail = () => {
+    onUpdateEmail(acc.id, emailVal);
+    setIsEmailModified(false);
   };
 
   const hasValidTempPass = acc.temp_password 
@@ -7096,17 +7462,57 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onTogg
     : 0;
 
   return (
-    <tr className="hover:bg-zinc-900/40 text-zinc-300">
-      <td className="p-3 font-mono font-bold text-white flex items-center gap-1.5">
-        <span>{acc.id}</span>
-        {acc.id === 'admin' && (
-          <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 text-[9px] px-1.5 py-0.5 rounded font-extrabold">
-            管理者
-          </span>
-        )}
+    <tr className={`hover:bg-zinc-900/40 text-zinc-300 transition-colors ${!acc.is_active ? 'bg-amber-950/10' : ''}`}>
+      {/* ID & Badges */}
+      <td className="p-3 font-mono font-bold text-white">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span>{acc.id}</span>
+          {acc.id === 'admin' && (
+            <span className="bg-emerald-950 text-emerald-400 border border-emerald-900 text-[9px] px-1.5 py-0.5 rounded font-extrabold">
+              管理者
+            </span>
+          )}
+          {!acc.is_active && (
+            <span className="bg-amber-950 text-amber-300 border border-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black animate-pulse">
+              承認待ち
+            </span>
+          )}
+        </div>
       </td>
+
+      {/* Team Name */}
       <td className="p-3 font-bold">{acc.team_name || '---'}</td>
-      <td className="p-3 font-mono text-zinc-400 text-[11px]">{acc.email || <span className="text-zinc-600 font-sans">未登録</span>}</td>
+
+      {/* Email Address with Inline Edit & Save */}
+      <td className="p-3">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="email"
+            placeholder="メール未登録"
+            value={emailVal}
+            onChange={(e) => {
+              setEmailVal(e.target.value);
+              setIsEmailModified(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && isEmailModified) {
+                handleSaveEmail();
+              }
+            }}
+            className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs font-mono text-zinc-200 w-36 sm:w-44 focus:outline-none focus:border-emerald-500"
+          />
+          {isEmailModified && (
+            <button
+              onClick={handleSaveEmail}
+              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap active:scale-95"
+            >
+              保存
+            </button>
+          )}
+        </div>
+      </td>
+
+      {/* Password with Eye Toggle & Save */}
       <td className="p-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
@@ -7116,11 +7522,11 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onTogg
                 value={showPass && hasValidTempPass ? acc.temp_password : pass}
                 onChange={(e) => {
                   setPass(e.target.value);
-                  setIsModified(true);
+                  setIsPassModified(true);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && isModified) {
-                    handleSave();
+                  if (e.key === 'Enter' && isPassModified) {
+                    handleSavePassword();
                   }
                 }}
                 className={`bg-zinc-900 border ${hasValidTempPass ? 'border-amber-600/70 text-amber-300' : 'border-zinc-800 text-white'} rounded pl-2 pr-7 py-1 text-xs font-mono font-bold w-28 text-center focus:outline-none focus:border-emerald-500`}
@@ -7134,10 +7540,10 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onTogg
                 {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
-            {isModified && (
+            {isPassModified && (
               <button
-                onClick={handleSave}
-                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap"
+                onClick={handleSavePassword}
+                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow transition-all cursor-pointer whitespace-nowrap active:scale-95"
               >
                 保存
               </button>
@@ -7150,41 +7556,54 @@ const AdminAccountRow = ({ acc, onUpdatePassword, onGenerateTempPassword, onTogg
           )}
         </div>
       </td>
+
+      {/* Subscription / Active Status */}
       <td className="p-3 text-center">
         <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
           acc.is_active 
             ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' 
-            : 'bg-rose-950 text-rose-400 border border-rose-900'
+            : 'bg-amber-950 text-amber-400 border border-amber-900'
         }`}>
-          {acc.is_active ? 'アクティブ' : '停止中'}
+          {acc.is_active ? 'アクティブ' : '承認待ち/停止'}
         </span>
       </td>
+
+      {/* Action Buttons */}
       <td className="p-3 text-right">
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+          {/* Quick Approve Button for Pending Accounts */}
+          {!acc.is_active && (
+            <button
+              onClick={() => onApprove(acc.id)}
+              className="px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40 flex items-center gap-1 active:scale-95"
+              title="アカウントを承認して利用開始可能にします"
+            >
+              ✅ 承認して有効化
+            </button>
+          )}
+
           <button
             onClick={() => onGenerateTempPassword(acc.id)}
             className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800/60 flex items-center gap-1"
             title="30分間だけ有効な緊急・復旧用一時パスワードを発行します"
           >
-            ⚡ 一時パス発行
+            ⚡ 一時パス
           </button>
 
-          {acc.id !== 'admin' && (
+          {acc.id !== 'admin' && acc.is_active && (
             <button
               onClick={() => onToggleActive(acc.id, acc.is_active)}
-              className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
-                acc.is_active
-                  ? 'bg-rose-950 hover:bg-rose-900 text-rose-400'
-                  : 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400'
-              }`}
+              className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-zinc-800 hover:bg-rose-950 text-zinc-400 hover:text-rose-400 border border-zinc-700 hover:border-rose-900"
             >
-              {acc.is_active ? '契約停止' : '再開する'}
+              停止
             </button>
           )}
+          
           {acc.id !== 'admin' && (
             <button
               onClick={() => onDelete(acc.id)}
-              className="px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900"
+              className="px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-900"
+              title="アカウントを削除します"
             >
               🗑 削除
             </button>

@@ -969,10 +969,10 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-3 w-full flex-1 min-w-0">
+    <div className="flex flex-col lg:flex-row landscape:flex-row gap-2.5 sm:gap-3 w-full flex-1 min-w-0">
       
-      {/* LEFT COLUMN: Control Widgets Panel (Code Window - 2/5 Ratio Width on iPad landscape/desktop) */}
-      <div className="w-full lg:w-2/5 flex flex-col gap-2.5 bg-zinc-900 border border-zinc-800 p-3 sm:p-3.5 rounded-xl shadow-xl h-fit text-xs shrink-0">
+      {/* LEFT COLUMN: Control Widgets Panel (Code Window - 2/5 Ratio Width on landscape/desktop) */}
+      <div className="w-full lg:w-2/5 landscape:w-2/5 flex flex-col gap-2 sm:gap-2.5 bg-zinc-900 border border-zinc-800 p-2.5 sm:p-3.5 rounded-xl shadow-xl h-fit text-xs shrink-0">
         
         {/* ROW 1: Count & Inning & Batter with Prev/Next buttons */}
         <div className="grid grid-cols-12 gap-2 items-center">
@@ -1864,7 +1864,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
       </div>
 
       {/* RIGHT COLUMN: Button Board Canvas (3/5 Ratio Width) */}
-      <div className="w-full lg:flex-1 flex flex-col bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl shadow-xl min-w-0">
+      <div className="w-full lg:flex-1 landscape:flex-1 flex flex-col bg-zinc-900 border border-zinc-800 p-2.5 sm:p-3.5 rounded-xl shadow-xl min-w-0">
         
         {/* Canvas Header & Design mode triggers */}
         <div className="flex justify-between items-center border-b border-zinc-800 pb-2 flex-wrap gap-2">
