@@ -47,10 +47,11 @@ ditto "$SRC" "$INSTALL_DIR/$APP_NAME"
 # 検疫フラグを除去（「壊れています」回避）
 xattr -cr "$INSTALL_DIR/$APP_NAME"
 
-# ✅ release_output内のアプリを削除
-# （残しておくとmacOSが検出してアイコンが2つ表示されるため）
-rm -rf "release_output/mac-arm64/$APP_NAME" 2>/dev/null || true
-rm -rf "release_output/mac/$APP_NAME" 2>/dev/null || true
+# ✅ release_output内のアプリおよび不要な一時ビルドファイルを削除
+# （残しておくとmacOSが検出してアイコンが2つ表示されたり、ディスク容量を圧迫するため）
+rm -rf "release_output/mac-arm64" 2>/dev/null || true
+rm -rf "release_output/mac" 2>/dev/null || true
+rm -f release_output/*.zip release_output/*.dmg release_output/*.blockmap 2>/dev/null || true
 
 echo ""
 echo "✅ インストール完了！バージョン: $(cat package.json | grep '\"version\"' | head -1 | awk -F'"' '{print $4}')"
