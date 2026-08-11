@@ -5333,12 +5333,14 @@ function App() {
         <div 
           style={{ display: currentView === 'analytics' || currentView === 'matrix' ? 'none' : 'block' }}
           className={`shrink-0 w-full transition-all duration-300 ${
-            currentView === 'organizer'
-              ? (activeOrganizerTab === 'grid' ? 'max-w-2xl mx-auto p-2 lg:p-4' : 'max-w-7xl mx-auto p-2 lg:p-4')
+            currentView === 'organizer' && activeOrganizerTab === 'grid'
+              ? 'sticky top-[52px] z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 shadow-xl max-w-full px-4 py-3'
+              : currentView === 'organizer'
+              ? 'max-w-7xl mx-auto p-2 lg:p-4'
               : 'max-w-5xl mx-auto p-4'
           }`}
         >
-          <div className={currentView === 'organizer' && activeOrganizerTab === 'organizer' ? "grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch" : ""}>
+          <div className={currentView === 'organizer' && activeOrganizerTab === 'organizer' ? "grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch" : currentView === 'organizer' && activeOrganizerTab === 'grid' ? "max-w-3xl mx-auto" : ""}>
             <div className={currentView === 'organizer' && activeOrganizerTab === 'organizer' ? "lg:col-span-2 relative" : "relative"}>
               {currentView === 'organizer' && activeOrganizerTab === 'organizer' && orderedSelectedClips.length > 0 && !activePreviewClip && (
                 <div className="absolute top-2 left-2 z-30 bg-emerald-950/90 border border-emerald-500/80 px-2.5 py-1 rounded-lg text-[9px] font-bold text-emerald-400 flex items-center gap-1.5 shadow-lg backdrop-blur">

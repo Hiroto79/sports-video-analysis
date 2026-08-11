@@ -66,19 +66,17 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
   const [draggedColName, setDraggedColName] = useState<string | null>(null);
   const [dragOverColName, setDragOverColName] = useState<string | null>(null);
 
-  // Get active unique group names for grid headers
+  // Get active unique group names for grid headers (organized by logical baseball order)
   const activeGroupNames = useMemo(() => {
+    const priorityOrder = ['球種', 'Pitch Type', '結果', 'Result', '球速', '確信度', 'AI判定', 'コース', '打球方向', 'Batted Ball', 'Play', 'Tactics', 'RBI'];
     const groups = new Set<string>();
-    groups.add('Pitch Type');
-    groups.add('Result');
-    groups.add('Batted Ball');
-    groups.add('Play');
-    groups.add('Tactics');
-    groups.add('RBI');
+
+    // Add prioritized keys first
+    priorityOrder.forEach(k => groups.add(k));
 
     events.forEach(ev => {
       Object.keys(ev.labels).forEach(g => {
-        if (g !== 'Pitcher' && g !== 'Batter') groups.add(g);
+        if (g !== 'Pitcher' && g !== 'Batter' && g !== '投手' && g !== '打者') groups.add(g);
       });
     });
     return Array.from(groups);
