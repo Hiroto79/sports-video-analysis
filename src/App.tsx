@@ -3974,8 +3974,8 @@ function App() {
       setPlayers(() => {
         const formattedImported = importedPlayers.map((p, idx) => {
           const hist = getHandednessFromHistory(p.name, p.throws || 'R', p.bats || 'R', csvFileName);
-          const cleanName = p.name.trim().replace(/[\s\u3000\.\-\']+/g, '_');
-          const cleanTeam = (p.teamName ? p.teamName.trim().toUpperCase() : nameA).replace(/[\s\u3000\.\-\']+/g, '_');
+          const cleanName = p.name.trim().replace(/[\s\u3000.\-']+/g, '_');
+          const cleanTeam = (p.teamName ? p.teamName.trim().toUpperCase() : nameA).replace(/[\s\u3000.\-']+/g, '_');
           const cleanNum = p.number ? p.number.trim() : idx.toString();
           const detId = `p_imported_${cleanTeam}_${cleanNum}_${cleanName}`;
           return {
@@ -4012,8 +4012,8 @@ function App() {
       });
       const formattedImported = importedPlayers.map((p, idx) => {
         const hist = getHandednessFromHistory(p.name, p.throws || 'R', p.bats || 'R', csvFileName);
-        const cleanName = p.name.trim().replace(/[\s\u3000\.\-\']+/g, '_');
-        const cleanTeam = normTeamNameVal.replace(/[\s\u3000\.\-\']+/g, '_');
+        const cleanName = p.name.trim().replace(/[\s\u3000.\-']+/g, '_');
+        const cleanTeam = normTeamNameVal.replace(/[\s\u3000.\-']+/g, '_');
         const cleanNum = p.number ? p.number.trim() : idx.toString();
         const detId = `p_imported_${cleanTeam}_${cleanNum}_${cleanName}`;
         return {
@@ -4160,7 +4160,7 @@ function App() {
     defenseNotes: string,
     course: string,
     hitLocation: { x: number, y: number } | null,
-    perspective: 'pitcher' | 'catcher',
+    _perspective: 'pitcher' | 'catcher',
     
     iNum?: number,
     iHalf?: 'top' | 'bottom',
@@ -4179,7 +4179,6 @@ function App() {
     targetEventId?: string
   ) => {
     if (isCodeWindow) return;
-    perspective;
 
     const resolvedInningNum = iNum !== undefined ? iNum : inningNum;
     const resolvedInningHalf = iHalf !== undefined ? iHalf : inningHalf;
