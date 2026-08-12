@@ -207,10 +207,10 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // Settings Modal & Precision Tuning
   const [isSettingOpen, setIsSettingOpen] = useState<boolean>(false);
 
-  // 🎯 Precision Lead-in & Lead-out Timing (ワインドアップ始動から捕球までを完全カバー)
+  // 🎯 Precision Lead-in & Lead-out Timing (投球完了時刻の 4.0秒前にシーク)
   const [leadInSec, setLeadInSec] = useState<number>(() => {
     const saved = localStorage.getItem('ai_receiver_lead_in');
-    return saved ? Math.max(5.5, parseFloat(saved)) : 5.5; // デフォルト投球前 5.5秒 (投手が足を上げる始動シーン)
+    return saved ? parseFloat(saved) : 4.0; // ユーザー指定: 投球完了時刻の 4.0秒前
   });
   const [leadOutSec, setLeadOutSec] = useState<number>(() => {
     const saved = localStorage.getItem('ai_receiver_lead_out');
@@ -222,6 +222,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [cvMotionLevel, setCvMotionLevel] = useState<number>(0);
   const [cvDetectStatus, setCvDetectStatus] = useState<string>('待機中');
   const lastPitchTimeRef = useRef<number>(-999);
+  const maxProcessedVideoTimeRef = useRef<number>(0); // 🛡️ 過去巻き戻し時の再打刻を絶対遮断する未来進行ガード
   const cvCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
   const cvAnimFrameRef = useRef<number | null>(null);
@@ -230,7 +231,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [isInningWarmup, setIsInningWarmup] = useState<boolean>(false);
   const inningWarmupEndSecRef = useRef<number>(0);
 
-  // 🎬 独立投球クリップ確認プレビュー (メインの自動タグ付け進行を一切巻き戻さずに確認可能)
+  // 🎬 独立投球クリップ確認プレビュー
   const [selectedPreviewPitch, setSelectedPreviewPitch] = useState<AiStatPayload | null>(null);
 
   // Video Preview Player state (AI自動タグ付けマスター動画)
@@ -364,8 +365,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const seekAndPlayVideo = (timeSec: number, pitchNum?: number) => {
     if (pitchNum !== undefined) setActiveSeekingPitchNum(pitchNum);
     
-    // 投球始動地点（ワインドアップ: timeSec - leadInSec, 最低 5.5秒前に戻す）
-    const rewindSec = leadInSec > 0 ? leadInSec : 5.5;
+    // 投球始動地点（ワインドアップ: 投球完了時刻の 4.0秒前に戻す）
+    const rewindSec = leadInSec > 0 ? leadInSec : 4.0;
     const motionStartTime = Math.max(0, timeSec - rewindSec);
     
     if (videoPreviewRef.current) {
@@ -461,6 +462,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
     const pitchTime = rawPayload.video_timestamp !== undefined ? rawPayload.video_timestamp : Number(curVidTime.toFixed(2));
     
+    // 🛡️ 最大進行時間を更新（これより過去の巻き戻しシーンでの再打刻を絶対遮断）
+    maxProcessedVideoTimeRef.current = Math.max(maxProcessedVideoTimeRef.current, pitchTime);
+
     const clipStart = Math.max(0, pitchTime - leadInSec);
     const clipEnd = pitchTime + leadOutSec;
 
@@ -746,8 +750,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               setIsInningWarmup(false);
             }
 
-            // 🛡️ 3. 既打刻シーンの完全重複防止ガード (動画を巻き戻して確認再生している時の二重打刻を100%遮断)
-            const isAlreadyTagged = history.some(item => {
+            // 🛡️ 3. 既打刻＆巻き戻しシーンの完全遮断ガード (過去の時間帯での再打刻を数学的に100%遮断)
+            const isRewoundPastScene = maxProcessedVideoTimeRef.current > 0 && curTime <= (maxProcessedVideoTimeRef.current - 1.2);
+            const isAlreadyTagged = isRewoundPastScene || history.some(item => {
               if (item.video_timestamp === undefined) return false;
               return Math.abs(curTime - item.video_timestamp) < 4.2;
             });
@@ -758,7 +763,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
             }
 
-            // 🎯 5. 本番センターカメラ投球モーションピーク検知 (既打刻のみスキップし、新しい投球はノンストップで自動検知)
+            // 🎯 5. 本番センターカメラ投球モーションピーク検知 (新しい未記録のシーンのみ打刻)
             if (
               !isBeforeFirstPitch && 
               !isInningWarmupActive &&
@@ -769,6 +774,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               (timeSinceLastPitch >= 10.5 || timeSinceLastPitch < -2.0)
             ) {
               lastPitchTimeRef.current = curTime;
+              maxProcessedVideoTimeRef.current = Math.max(maxProcessedVideoTimeRef.current, curTime);
               setCvDetectStatus('⚡ 本番投球モーション検知！');
               
               const pitchTypes = ['4シーム', 'スライダー', 'カットボール', 'カーブ', 'フォーク', '2シーム'];
@@ -793,7 +799,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
               setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ常時監視中）'), 3500);
             } else if (isAlreadyTagged) {
-              setCvDetectStatus('🔍 記録済み投球シーン（二重打刻スキップ中）');
+              setCvDetectStatus('🔍 過去ログ確認中（既打刻シーンのため二重打刻スキップ）');
             } else if (isInningWarmupActive) {
               setCvDetectStatus('⚾ イニング間ウォームアップ中（練習投球を自動スキップ）');
             } else if (isBeforeFirstPitch) {
