@@ -91,7 +91,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   inningHalf = 'top',
   videoUrl = null,
   videoName = null,
-  onSeek,
+  onSeek: _onSeek,
   onUpdateInning,
 }) => {
   // -------------------------------------------------------------
@@ -230,7 +230,10 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [isInningWarmup, setIsInningWarmup] = useState<boolean>(false);
   const inningWarmupEndSecRef = useRef<number>(0);
 
-  // Video Preview Player state
+  // 🎬 独立投球クリップ確認プレビュー (メインの自動タグ付け進行を一切巻き戻さずに確認可能)
+  const [selectedPreviewPitch, setSelectedPreviewPitch] = useState<AiStatPayload | null>(null);
+
+  // Video Preview Player state (AI自動タグ付けマスター動画)
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [activeSeekingPitchNum, setActiveSeekingPitchNum] = useState<number | null>(null);
@@ -361,18 +364,18 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const seekAndPlayVideo = (timeSec: number, pitchNum?: number) => {
     if (pitchNum !== undefined) setActiveSeekingPitchNum(pitchNum);
     
-    // 投球始動地点（ワインドアップ: timeSec - leadInSec）
-    const motionStartTime = Math.max(0, timeSec - leadInSec);
-    
-    if (videoPreviewRef.current) {
-      const vid = videoPreviewRef.current;
-      vid.muted = true;
-      vid.currentTime = motionStartTime;
-      vid.playbackRate = playbackSpeed;
-      vid.play().catch(e => console.warn('Play interrupted:', e));
-    }
-    onSeek?.(motionStartTime);
-    setLastNotification(`🎬 投球 #${pitchNum || ''} の始動シーン（${formatSeconds(motionStartTime)}〜）へジャンプ再生`);
+    // 対象の投球データを検索して独立プレビュープレイヤーに設定
+    const target = history.find(item => item.pitch_number === pitchNum) || {
+      pitch_number: pitchNum,
+      video_timestamp: timeSec,
+      start_time: Math.max(0, timeSec - leadInSec),
+      end_time: timeSec + leadOutSec,
+      result: 'Strike'
+    };
+    setSelectedPreviewPitch(target as AiStatPayload);
+
+    // メインの自動タグ付けマスター動画は巻き戻さず、先へ先へと進み続ける
+    setLastNotification(`🎬 投球 #${pitchNum || ''} のクリッププレビューを開きました（自動タグ付けはバックグラウンドで先へ進み続けます）`);
   };
 
   // -------------------------------------------------------------
@@ -1663,6 +1666,125 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg cursor-pointer active:scale-95"
               >
                 保存して閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. 🎬 INDEPENDENT PITCH CLIP REVIEW MODAL (メインの自動タグ付け進行を巻き戻さずに独立確認) */}
+      {selectedPreviewPitch && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-750 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col animate-scale-up">
+            <div className="px-5 py-3.5 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-amber-400" />
+                <h3 className="font-black text-sm text-white">
+                  🎬 投球 #{selectedPreviewPitch.pitch_number} クリップ確認プレビュー
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  ※ 自動タグ付けはバックグラウンドで進行中
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedPreviewPitch(null)}
+                className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 flex flex-col gap-3 bg-zinc-950">
+              {/* Review Video Box */}
+              <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center">
+                {videoUrl ? (
+                  <video
+                    ref={(el) => {
+                      if (el && selectedPreviewPitch.video_timestamp !== undefined) {
+                        const start = Math.max(0, selectedPreviewPitch.video_timestamp - leadInSec);
+                        const end = selectedPreviewPitch.video_timestamp + leadOutSec;
+                        el.currentTime = start;
+                        el.play().catch(() => {});
+                        el.ontimeupdate = () => {
+                          if (el.currentTime >= end) {
+                            el.currentTime = start; // クリップ範囲を自動ループ再生
+                          }
+                        };
+                      }
+                    }}
+                    src={videoUrl}
+                    className="w-full h-full object-contain"
+                    controls
+                    autoPlay
+                    loop
+                  />
+                ) : (
+                  <div className="text-zinc-500 text-xs">動画が読み込まれていません</div>
+                )}
+              </div>
+
+              {/* Pitch Info & Quick Override Buttons */}
+              <div className="flex items-center justify-between p-3 bg-zinc-900/90 rounded-xl border border-zinc-800 text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-amber-400 font-bold">
+                    ⏱️ {formatSeconds(selectedPreviewPitch.video_timestamp)}
+                  </span>
+                  <span className="font-bold text-zinc-200">
+                    現在の判定: <span className="text-amber-300">{normalizeResult(selectedPreviewPitch.result).label}</span>
+                  </span>
+                  <span className="text-zinc-400">
+                    球種: {selectedPreviewPitch.pitch_type || '4シーム'} / {selectedPreviewPitch.ball_speed ? selectedPreviewPitch.ball_speed + 'km' : '-'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-zinc-400">判定修正:</span>
+                  <button
+                    onClick={() => {
+                      handleOverridePitch(selectedPreviewPitch.pitch_number!, 'Strike');
+                      setSelectedPreviewPitch(prev => prev ? { ...prev, result: 'Strike', isOverridden: true } : null);
+                    }}
+                    className="px-2 py-1 rounded bg-amber-950/80 hover:bg-amber-700 text-amber-300 text-xs font-bold border border-amber-600/50 cursor-pointer"
+                  >
+                    S (ストライク)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleOverridePitch(selectedPreviewPitch.pitch_number!, 'Ball');
+                      setSelectedPreviewPitch(prev => prev ? { ...prev, result: 'Ball', isOverridden: true } : null);
+                    }}
+                    className="px-2 py-1 rounded bg-emerald-950/80 hover:bg-emerald-700 text-emerald-300 text-xs font-bold border border-emerald-600/50 cursor-pointer"
+                  >
+                    B (ボール)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleOverridePitch(selectedPreviewPitch.pitch_number!, 'Foul');
+                      setSelectedPreviewPitch(prev => prev ? { ...prev, result: 'Foul', isOverridden: true } : null);
+                    }}
+                    className="px-2 py-1 rounded bg-yellow-950/80 hover:bg-yellow-700 text-yellow-300 text-xs font-bold border border-yellow-600/50 cursor-pointer"
+                  >
+                    F (ファール)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleOverridePitch(selectedPreviewPitch.pitch_number!, 'InPlay');
+                      setSelectedPreviewPitch(prev => prev ? { ...prev, result: 'InPlay', isOverridden: true } : null);
+                    }}
+                    className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-700 text-rose-300 text-xs font-bold border border-rose-600/50 cursor-pointer"
+                  >
+                    H (インプレー)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-zinc-800 bg-zinc-950 flex justify-end">
+              <button
+                onClick={() => setSelectedPreviewPitch(null)}
+                className="px-5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-white font-bold text-xs shadow cursor-pointer active:scale-95"
+              >
+                プレビューを閉じる
               </button>
             </div>
           </div>
