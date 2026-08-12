@@ -5715,6 +5715,16 @@ function App() {
           currentTime={currentTime}
           inningNum={inningNum}
           inningHalf={inningHalf}
+          videoUrl={videoUrl}
+          videoName={videoName}
+          onSeek={(time) => {
+            const video = videoPlayerRef.current?.getVideoElement();
+            if (video) video.currentTime = time;
+          }}
+          onUpdateInning={(num, half) => {
+            setInningNum(num);
+            setInningHalf(half);
+          }}
           onNavigateToMatrix={() => handleViewChange('matrix')}
           onNavigateToOrganizer={() => handleViewChange('organizer')}
           onAddEvent={(newEvent) => {
