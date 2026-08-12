@@ -6,8 +6,7 @@ import {
   RefreshCw, 
   Play, 
   Trash2, 
-  Sliders,
-  Zap
+  Sliders
 } from 'lucide-react';
 import type { TaggedEvent, Player } from '../types';
 
@@ -398,12 +397,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // Selected Pitch Logs for Batch & Individual Deletion
   const [selectedPitchNums, setSelectedPitchNums] = useState<number[]>([]);
 
-  // ⚡ Background Fast Full-Game Auto Scan State
-  const [isFastScanning, setIsFastScanning] = useState<boolean>(false);
-  const [scanProgress, setScanProgress] = useState<number>(0);
-  const [scanDetectedCount, setScanDetectedCount] = useState<number>(0);
-  const fastScanAbortRef = useRef<boolean>(false);
-
   useEffect(() => {
     localStorage.setItem('ai_receiver_lineup_top', JSON.stringify(lineupTop));
   }, [lineupTop]);
@@ -474,11 +467,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
   const normalizeResult = (res: string): { label: string; color: string; bg: string; border: string; badge: string; type: 'strike' | 'ball' | 'foul' | 'inplay' | 'walk' | 'hbp' | 'k' | 'pickoff' | 'steal' | 'other' } => {
     const r = (res || '').toLowerCase();
-    if (r.includes('lookingk') || r.includes('見逃し三振') || r.includes('見逃しk')) {
-      return { label: '見逃し三振', color: 'text-rose-400', bg: 'bg-rose-950/40', border: 'border-rose-500/60', badge: 'bg-rose-700 text-white', type: 'k' };
-    }
-    if (r.includes('swingingk') || r.includes('空振り三振') || r.includes('空振りk')) {
-      return { label: '空振り三振', color: 'text-rose-400', bg: 'bg-rose-950/40', border: 'border-rose-500/60', badge: 'bg-rose-600 text-white', type: 'k' };
+    if (r.includes('k') || r.includes('三振') || r.includes('strikeout')) {
+      return { label: '三振', color: 'text-rose-400', bg: 'bg-rose-950/40', border: 'border-rose-500/60', badge: 'bg-rose-600 text-white font-bold', type: 'k' };
     }
     if (r.includes('lookingstrike') || r.includes('見逃しストライク') || r.includes('見逃しs') || r.includes('strike_called')) {
       return { label: '見逃しストライク', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/40', badge: 'bg-amber-500 text-black font-black', type: 'strike' };
@@ -692,19 +682,37 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         playerName: resolvedPitcher,
         labels
       });
+
+      // 🎯 3ストライク時は「三振」イベントも自動で同時タグ付け（空振り/見逃しストライク ＋ 三振 の2タグ生成）
+      if ((resMeta.type === 'strike' && strikes + 1 >= 3) || resMeta.type === 'k') {
+        onAddEvent({
+          id: `ai_k_${Date.now()}_${nextPitchNum}`,
+          actionName: '三振',
+          timestamp: pitchTime,
+          startTime: clipStart,
+          endTime: clipEnd,
+          playerName: currentBatter.name,
+          labels: {
+            ...labels,
+            'イベント': '三振',
+            '結果': '三振',
+            '三振種別': resMeta.label
+          }
+        });
+      }
     }
 
     if (autoAdvance) {
       if (resMeta.type === 'walk' || resMeta.type === 'hbp') {
         nextBatter();
         setLastNotification(`🚶‍♂️ ${resMeta.label}！ カウントリセット → 次打者へ進行`);
-      } else if (resMeta.type === 'k') {
+      } else if (resMeta.type === 'k' || (resMeta.type === 'strike' && strikes + 1 >= 3)) {
         if (outs + 1 >= 3) {
           changeInning();
         } else {
           setOuts(prev => prev + 1);
           nextBatter();
-          setLastNotification(`🎯 三振！ ${outs + 1}アウト → 次打者へ進行`);
+          setLastNotification(`🎯 三振 (${resMeta.label})！ ${outs + 1}アウト → 次打者へ進行`);
         }
       } else if (resMeta.type === 'ball') {
         if (balls + 1 >= 4) {
@@ -714,17 +722,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           setBalls(prev => prev + 1);
         }
       } else if (resMeta.type === 'strike') {
-        if (strikes + 1 >= 3) {
-          if (outs + 1 >= 3) {
-            changeInning();
-          } else {
-            setOuts(prev => prev + 1);
-            nextBatter();
-            setLastNotification(`🎯 3ストライク（三振）！ ${outs + 1}アウト → 次打者へ進行`);
-          }
-        } else {
-          setStrikes(prev => prev + 1);
-        }
+        setStrikes(prev => prev + 1);
       } else if (resMeta.type === 'foul') {
         setStrikes(prev => (prev < 2 ? prev + 1 : prev));
         setLastNotification(`💥 ファール！ カウント維持（${balls}-${Math.min(2, strikes + 1)}）`);
@@ -821,153 +819,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setSelectedPitchNums(prev => 
       prev.includes(pitchNum) ? prev.filter(n => n !== pitchNum) : [...prev, pitchNum]
     );
-  };
-
-  // ⚡ Background Fast Full-Game Auto Scan Engine (超高速バッチ自動タグ付け)
-  const startBackgroundFastScan = async () => {
-    if (!videoUrl) {
-      alert('動画が読み込まれていません。上部メニューから動画を選択してください。');
-      return;
-    }
-
-    setIsFastScanning(true);
-    setScanProgress(0);
-    setScanDetectedCount(0);
-    fastScanAbortRef.current = false;
-    setLastNotification('⚡ バックグラウンド高速一括解析を開始しました（全編を高速スキャン中...）');
-
-    // Create offscreen video element for rapid background decode
-    const offscreenVid = document.createElement('video');
-    offscreenVid.src = videoUrl;
-    offscreenVid.muted = true;
-    offscreenVid.playsInline = true;
-    offscreenVid.preload = 'auto';
-
-    await new Promise<void>((resolve) => {
-      offscreenVid.onloadedmetadata = () => resolve();
-      offscreenVid.onerror = () => resolve();
-    });
-
-    const duration = offscreenVid.duration || 3600;
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 36;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    if (!ctx) {
-      setIsFastScanning(false);
-      return;
-    }
-
-    let prevData: Uint8ClampedArray | null = null;
-    let lastFoundSec = -999;
-    const foundPitches: AiStatPayload[] = [];
-    let currentScanTime = firstPitchTimestamp !== null ? firstPitchTimestamp : 0;
-    const stepSec = 0.75; // Fast sampling step
-
-    try {
-      while (currentScanTime < duration && !fastScanAbortRef.current) {
-        offscreenVid.currentTime = currentScanTime;
-        await new Promise<void>((res) => {
-          const onSeeked = () => {
-            offscreenVid.removeEventListener('seeked', onSeeked);
-            res();
-          };
-          offscreenVid.addEventListener('seeked', onSeeked);
-          setTimeout(() => {
-            offscreenVid.removeEventListener('seeked', onSeeked);
-            res();
-          }, 60);
-        });
-
-        if (fastScanAbortRef.current) break;
-
-        ctx.drawImage(offscreenVid, 0, 0, 64, 36);
-        const imgData = ctx.getImageData(0, 0, 64, 36).data;
-
-        if (prevData) {
-          let diffSum = 0;
-          let centerDiffSum = 0;
-          const totalPix = 64 * 36;
-          let centerPix = 0;
-
-          for (let i = 0; i < totalPix; i++) {
-            const idx = i * 4;
-            const diff = (
-              Math.abs(imgData[idx] - prevData[idx]) +
-              Math.abs(imgData[idx + 1] - prevData[idx + 1]) +
-              Math.abs(imgData[idx + 2] - prevData[idx + 2])
-            ) / 3;
-            diffSum += diff;
-
-            const y = Math.floor(i / 64);
-            const x = i % 64;
-            if (x >= 16 && x <= 48 && y >= 8 && y <= 28) {
-              centerDiffSum += diff;
-              centerPix++;
-            }
-          }
-
-          const avgDiff = diffSum / totalPix;
-          const centerDiff = centerDiffSum / Math.max(1, centerPix);
-          const motionScore = centerDiff * 1.5;
-
-          const isSceneCut = avgDiff > 55;
-          const timeSinceLast = currentScanTime - lastFoundSec;
-
-          if (!isSceneCut && motionScore >= 35 && motionScore <= 60 && timeSinceLast >= 12.0) {
-            lastFoundSec = currentScanTime;
-            const pitchNum = pitchCounterRef.current + foundPitches.length + 1;
-            const pitchTypes = ['4シーム', 'スライダー', 'カットボール', 'カーブ', 'フォーク', '2シーム'];
-            const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
-            const r = Math.random();
-            const res = r < 0.35 ? '見逃しストライク' : r < 0.55 ? '空振りストライク' : r < 0.8 ? 'ボール' : r < 0.92 ? 'ファール' : 'インプレー';
-            const pt = pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
-            const cs = courses[Math.floor(Math.random() * courses.length)];
-
-            const newFound: AiStatPayload = {
-              pitch_number: pitchNum,
-              result: res,
-              confidence: 0.95,
-              ball_speed: pt.includes('4シーム') ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 10 + 134),
-              pitch_type: pt,
-              course: cs,
-              camera_view: 'center',
-              target_course: cs,
-              actual_course: cs,
-              miss_distance_cm: parseFloat((Math.random() * 5.5).toFixed(1)),
-              video_timestamp: Number(currentScanTime.toFixed(2)),
-              start_time: Math.max(0, currentScanTime - leadInSec),
-              end_time: currentScanTime + leadOutSec,
-              receivedAt: new Date().toLocaleTimeString(),
-              pitcher: currentPitcher.name,
-              batter: `${currentBatter.order}番 ${currentBatter.name}`
-            };
-
-            foundPitches.push(newFound);
-            setScanDetectedCount(foundPitches.length);
-          }
-        }
-
-        prevData = new Uint8ClampedArray(imgData);
-        currentScanTime += stepSec;
-        setScanProgress(Math.min(99, Math.round((currentScanTime / duration) * 100)));
-      }
-    } finally {
-      offscreenVid.src = '';
-      offscreenVid.remove();
-    }
-
-    if (foundPitches.length > 0) {
-      pitchCounterRef.current += foundPitches.length;
-      setHistory(prev => [...foundPitches.reverse(), ...prev]);
-      setLastNotification(`🎉 高速スキャン完了: 全編から ${foundPitches.length} 球の投球を自動検出・登録しました！`);
-    } else {
-      setLastNotification('高速スキャン終了: 新たな投球モーションは検出されませんでした');
-    }
-
-    setIsFastScanning(false);
-    setScanProgress(100);
   };
 
   // Keyboard shortcuts for live video tagging (B, S, K, F, H, W, Space)
@@ -1200,39 +1051,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* ⚡ Background Fast Scan Button */}
-          <button
-            onClick={() => {
-              if (isFastScanning) {
-                fastScanAbortRef.current = true;
-                setIsFastScanning(false);
-                setLastNotification('⏸️ 高速スキャンを中止しました');
-              } else {
-                startBackgroundFastScan();
-              }
-            }}
-            disabled={!videoUrl}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all shadow-lg cursor-pointer active:scale-95 border ${
-              !videoUrl
-                ? 'opacity-50 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-500'
-                : isFastScanning
-                ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-400 animate-pulse'
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)]'
-            }`}
-            title="試合全編をバックグラウンドで超高速自動解析し、全球の投球シーンを一括検出してログに自動登録します"
-          >
-            {isFastScanning ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-white animate-spin border-2 border-white border-t-transparent" />
-                <span>⚡ 高速解析中: {scanProgress}% ({scanDetectedCount}球検知) [中止]</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-3.5 h-3.5 text-amber-300" />
-                <span>⚡ 高速一括自動タグ付け (全編自動解析)</span>
-              </>
-            )}
-          </button>
 
           <button
             onClick={() => {
@@ -2173,21 +1991,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               </button>
             </div>
 
-            {/* Special Events (三振・死球・牽制) */}
+            {/* Special Events (三振・死球・牽制・盗塁) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-zinc-850">
               <button
-                onClick={() => triggerDirectPitchTag('LookingK')}
+                onClick={() => triggerDirectPitchTag('三振')}
                 className="py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-800 text-rose-300 text-xs font-bold border border-rose-700/50 cursor-pointer flex items-center justify-center gap-1"
-                title="見逃し三振として記録"
+                title="三振として記録（三振タグ追加・アウト加算・打者進行）"
               >
-                <span>見逃し三振 (Kc)</span>
-              </button>
-              <button
-                onClick={() => triggerDirectPitchTag('SwingingK')}
-                className="py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-800 text-rose-300 text-xs font-bold border border-rose-700/50 cursor-pointer flex items-center justify-center gap-1"
-                title="空振り三振として記録"
-              >
-                <span>空振り三振 (Ks)</span>
+                <span>🎯 三振 (Strikeout)</span>
               </button>
               <button
                 onClick={() => triggerDirectPitchTag('HBP')}
@@ -2200,6 +2011,12 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 className="py-1.5 rounded-lg bg-zinc-850 hover:bg-zinc-750 text-zinc-300 text-xs font-bold border border-zinc-700 cursor-pointer"
               >
                 👀 牽制球
+              </button>
+              <button
+                onClick={() => triggerDirectPitchTag('Steal')}
+                className="py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-800 text-cyan-300 text-xs font-bold border border-cyan-700/50 cursor-pointer"
+              >
+                🏃 盗塁
               </button>
             </div>
 
