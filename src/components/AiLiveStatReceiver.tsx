@@ -2294,18 +2294,35 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                       <td className="py-2.5 px-2 text-center font-bold text-zinc-400">
                         #{item.pitch_number}
                       </td>
-                      <td className="py-2.5 px-2 text-center">
+                      <td className="py-2.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                         {item.video_timestamp !== undefined ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              seekAndPlayVideo(item.video_timestamp!, item.pitch_number);
-                            }}
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] mx-auto cursor-pointer active:scale-95"
-                          >
-                            <Play className="w-2.5 h-2.5 fill-emerald-400" />
-                            <span>{formatSeconds(item.video_timestamp)}</span>
-                          </button>
+                          <div className="flex flex-col items-center gap-1">
+                            {/* メインプレイヤーにシーク */}
+                            <button
+                              onClick={() => seekAndPlayVideo(item.video_timestamp!, item.pitch_number)}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] mx-auto cursor-pointer active:scale-95"
+                              title="メインプレイヤーでそのシーンにジャンプ"
+                            >
+                              <Play className="w-2.5 h-2.5 fill-emerald-400" />
+                              <span>{formatSeconds(item.video_timestamp)}</span>
+                            </button>
+                            {/* 別ウィンドウでクリップ再生 */}
+                            {videoUrl && (
+                              <button
+                                onClick={() => {
+                                  const clipStart = item.start_time ?? Math.max(0, item.video_timestamp! - leadInSec);
+                                  const clipEnd = item.end_time ?? (item.video_timestamp! + leadOutSec);
+                                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>投球 #${item.pitch_number} クリップ (${formatSeconds(item.video_timestamp!)})</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:monospace;color:#fff}video{max-width:100%;max-height:80vh;outline:none}.info{padding:8px 16px;font-size:12px;color:#aaa;text-align:center}.badge{background:#f59e0b;color:#000;padding:2px 8px;border-radius:4px;font-weight:900;font-size:13px;margin-right:4px}</style></head><body><video id=v src="${videoUrl}" controls autoplay playsinline></video><div class=info><span class=badge>#${item.pitch_number}</span>${item.pitcher || ''} → ${item.batter || ''} | ${item.pitch_type || '4シーム'} | ${item.inningStr || ''} (${item.countStr || ''})</div><script>const v=document.getElementById('v');v.currentTime=${clipStart};v.playbackRate=${playbackSpeed};v.play();v.ontimeupdate=()=>{if(v.currentTime>=${clipEnd})v.currentTime=${clipStart};}</script></body></html>`;
+                                  const w = window.open('', `clip_${item.pitch_number}`, 'width=900,height=540,resizable=yes');
+                                  if (w) { w.document.write(html); w.document.close(); }
+                                }}
+                                className="flex items-center gap-0.5 px-2 py-0.5 rounded bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/40 font-bold text-[9px] mx-auto cursor-pointer active:scale-95"
+                                title="別ウィンドウでクリップをループ再生"
+                              >
+                                🪟 別窓再生
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-zinc-600 text-[10px]">-</span>
                         )}
@@ -2347,38 +2364,59 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                         {formatSeconds(startTime)} 〜 {formatSeconds(endTime)}
                       </td>
                       <td className="py-2.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
+                        {/* 未判定なら判定ボタンをハイライト強調（別窓で映像確認しながらすぐ押せる） */}
+                        <div className={`flex items-center justify-center gap-1 ${res.type === 'other' ? 'ring-1 ring-amber-500/60 rounded-lg px-1 py-0.5 bg-amber-950/20' : ''}`}>
                           <button
                             onClick={() => handleOverridePitch(item.pitch_number!, 'LookingStrike')}
-                            className="px-1.5 py-0.5 rounded bg-amber-950/60 hover:bg-amber-800 text-amber-300 text-[9px] font-bold border border-amber-700/50 cursor-pointer"
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border cursor-pointer transition-all active:scale-90 ${
+                              res.type === 'other'
+                                ? 'bg-amber-600 hover:bg-amber-400 text-black border-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]'
+                                : 'bg-amber-950/60 hover:bg-amber-800 text-amber-300 border-amber-700/50'
+                            }`}
                             title="見逃しストライクに変更"
                           >
                             S
                           </button>
                           <button
                             onClick={() => handleOverridePitch(item.pitch_number!, 'SwingingStrike')}
-                            className="px-1.5 py-0.5 rounded bg-orange-950/60 hover:bg-orange-800 text-orange-300 text-[9px] font-bold border border-orange-700/50 cursor-pointer"
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border cursor-pointer transition-all active:scale-90 ${
+                              res.type === 'other'
+                                ? 'bg-orange-600 hover:bg-orange-400 text-black border-orange-400 shadow-[0_0_6px_rgba(234,88,12,0.6)]'
+                                : 'bg-orange-950/60 hover:bg-orange-800 text-orange-300 border-orange-700/50'
+                            }`}
                             title="空振りストライクに変更"
                           >
                             K
                           </button>
                           <button
                             onClick={() => handleOverridePitch(item.pitch_number!, 'Ball')}
-                            className="px-1.5 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-800 text-emerald-300 text-[9px] font-bold border border-emerald-700/50 cursor-pointer"
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border cursor-pointer transition-all active:scale-90 ${
+                              res.type === 'other'
+                                ? 'bg-emerald-600 hover:bg-emerald-400 text-black border-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'
+                                : 'bg-emerald-950/60 hover:bg-emerald-800 text-emerald-300 border-emerald-700/50'
+                            }`}
                             title="ボールに変更"
                           >
                             B
                           </button>
                           <button
                             onClick={() => handleOverridePitch(item.pitch_number!, 'Foul')}
-                            className="px-1.5 py-0.5 rounded bg-yellow-950/60 hover:bg-yellow-800 text-yellow-300 text-[9px] font-bold border border-yellow-700/50 cursor-pointer"
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border cursor-pointer transition-all active:scale-90 ${
+                              res.type === 'other'
+                                ? 'bg-yellow-500 hover:bg-yellow-300 text-black border-yellow-300 shadow-[0_0_6px_rgba(234,179,8,0.6)]'
+                                : 'bg-yellow-950/60 hover:bg-yellow-800 text-yellow-300 border-yellow-700/50'
+                            }`}
                             title="ファールに変更"
                           >
                             F
                           </button>
                           <button
                             onClick={() => handleOverridePitch(item.pitch_number!, 'InPlay')}
-                            className="px-1.5 py-0.5 rounded bg-rose-950/60 hover:bg-rose-800 text-rose-300 text-[9px] font-bold border border-rose-700/50 cursor-pointer"
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border cursor-pointer transition-all active:scale-90 ${
+                              res.type === 'other'
+                                ? 'bg-rose-600 hover:bg-rose-400 text-white border-rose-400 shadow-[0_0_6px_rgba(239,68,68,0.6)]'
+                                : 'bg-rose-950/60 hover:bg-rose-800 text-rose-300 border-rose-700/50'
+                            }`}
                             title="インプレーに変更"
                           >
                             H
