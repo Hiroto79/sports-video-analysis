@@ -324,12 +324,17 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setHistory(prev => [newStat, ...prev]);
     playBeep(880, 'sine');
 
-    // 🎥 動画プレイヤーを該当シーンに自動シーク＆ループ再生
-    if (newStat.video_timestamp !== undefined) {
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.currentTime = Math.max(0, newStat.video_timestamp - 1.5);
-        videoPreviewRef.current.playbackRate = playbackSpeed;
-        videoPreviewRef.current.play().catch(() => {});
+    // 🎥 動画プレイヤーを該当シーンに自動シーク＆再生
+    if (newStat.video_timestamp !== undefined && videoPreviewRef.current) {
+      const vid = videoPreviewRef.current;
+      vid.muted = true; // ブラウザの自動再生ブロックを完全に回避
+      vid.currentTime = Math.max(0, newStat.video_timestamp - 1.2);
+      vid.playbackRate = playbackSpeed;
+      const playPromise = vid.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Auto-play suppressed or video pending:', err);
+        });
       }
       onSeek?.(newStat.video_timestamp);
     }
@@ -493,7 +498,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const missInches = parseFloat((missCm / 2.54).toFixed(1));
     const speed = pType === '4シーム' ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
 
-    const pitchTime = currentTime + (history.length * 3.5);
+    const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
+    const pitchTime = Number((curVidTime + (isAutoTagging ? 2.5 : 0)).toFixed(1));
 
     const payload: AiStatPayload = {
       result: res,
@@ -517,14 +523,21 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     if (isAutoTagging) {
       if (autoTagTimerRef.current) clearInterval(autoTagTimerRef.current);
       setIsAutoTagging(false);
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.pause();
+      }
       setLastNotification('⏸️ AI自動タグ付けを一時停止しました');
     } else {
       setIsAutoTagging(true);
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.muted = true;
+        videoPreviewRef.current.play().catch(() => {});
+      }
       triggerOneAutoPitch();
       autoTagTimerRef.current = setInterval(() => {
         triggerOneAutoPitch();
       }, 3000);
-      setLastNotification('🚀 AI動画自動タグ付けを開始しました（3秒間隔で動画と同期して自動打刻中）');
+      setLastNotification('🚀 AI動画自動タグ付けを開始しました（動画と連動して1球ごとに自動打刻中）');
     }
   };
 
@@ -818,6 +831,10 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                   src={videoUrl}
                   className="w-full h-full object-contain"
                   controls
+                  muted
+                  playsInline
+                  autoPlay
+                  preload="auto"
                 />
               ) : (
                 <div className="text-center p-6 text-zinc-500 flex flex-col items-center gap-2">
@@ -828,12 +845,69 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
               {/* Status Badge */}
               {isAutoTagging && (
-                <div className="absolute top-2 left-2 bg-emerald-950/90 border border-emerald-500/80 px-2.5 py-1 rounded-lg text-[9px] font-black text-emerald-300 flex items-center gap-1.5 shadow backdrop-blur-sm z-10">
+                <div className="absolute top-2 left-2 bg-emerald-950/90 border border-emerald-500/80 px-2.5 py-1 rounded-lg text-[9px] font-black text-emerald-300 flex items-center gap-1.5 shadow backdrop-blur-sm z-10 pointer-events-none">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                   <span>AI LIVE TRACKING SYNC</span>
                 </div>
               )}
             </div>
+
+            {/* Quick Video Action Bar */}
+            {videoUrl && (
+              <div className="flex items-center justify-between px-1 py-0.5 bg-zinc-900/60 rounded-xl border border-zinc-850 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      if (videoPreviewRef.current) {
+                        if (videoPreviewRef.current.paused) {
+                          videoPreviewRef.current.muted = true;
+                          videoPreviewRef.current.play();
+                        } else {
+                          videoPreviewRef.current.pause();
+                        }
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-[11px] cursor-pointer"
+                  >
+                    ▶️/⏸️ 再生・停止
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (videoPreviewRef.current) {
+                        videoPreviewRef.current.currentTime = Math.max(0, videoPreviewRef.current.currentTime - 5);
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] cursor-pointer"
+                  >
+                    ⏪ -5秒
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (videoPreviewRef.current) {
+                        videoPreviewRef.current.currentTime = videoPreviewRef.current.currentTime + 5;
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] cursor-pointer"
+                  >
+                    ⏩ +5秒
+                  </button>
+                </div>
+                {latestStat?.video_timestamp !== undefined && (
+                  <button
+                    onClick={() => {
+                      if (videoPreviewRef.current && latestStat.video_timestamp !== undefined) {
+                        videoPreviewRef.current.muted = true;
+                        videoPreviewRef.current.currentTime = Math.max(0, latestStat.video_timestamp - 1.5);
+                        videoPreviewRef.current.play();
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 font-bold text-[10px] cursor-pointer"
+                  >
+                    🔁 直前の1球をリピート再生
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Notification alert */}
             {lastNotification && (
