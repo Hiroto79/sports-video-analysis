@@ -285,13 +285,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     if (videoPreviewRef.current) {
       const vid = videoPreviewRef.current;
       vid.muted = true;
-      const target = Math.max(0, timeSec - 1.2);
+      // 投球モーション開始地点（ワインドアップ開始前 -3.0秒）へジャンプ
+      const target = Math.max(0, timeSec - 3.0);
       vid.currentTime = target;
       vid.playbackRate = playbackSpeed;
       vid.play().catch(e => console.warn('Play interrupted:', e));
     }
     onSeek?.(timeSec);
-    setLastNotification(`🎬 投球 #${pitchNum || ''} のシーン（${formatSeconds(timeSec)}）へジャンプしました`);
+    setLastNotification(`🎬 投球 #${pitchNum || ''} のワインドアップ開始シーン（${formatSeconds(Math.max(0, timeSec - 3.0))}〜）へジャンプしました`);
   };
 
   // -------------------------------------------------------------
@@ -347,7 +348,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // -------------------------------------------------------------
   // 5. INGEST STAT HANDLER (確実に通算投球番号をインクリメント)
   // -------------------------------------------------------------
-  const handleIngestStat = (rawPayload: AiStatPayload) => {
+  const handleIngestStat = (rawPayload: AiStatPayload, shouldSeek = false) => {
     pitchCounterRef.current += 1;
     const nextPitchNum = rawPayload.pitch_number || pitchCounterRef.current;
     
@@ -361,8 +362,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setHistory(prev => [newStat, ...prev]);
     playBeep(880, 'sine');
 
-    // 🎥 動画プレイヤーを該当シーンにジャンプ再生
-    if (newStat.video_timestamp !== undefined) {
+    // 🎥 手動打刻時やリプレイ時のみシークし、連続自動解析中は動画の流れを邪魔しない
+    if (shouldSeek && newStat.video_timestamp !== undefined) {
       seekAndPlayVideo(newStat.video_timestamp, nextPitchNum);
     }
 
@@ -377,8 +378,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     // Synchronize to Sportscode Event Timeline
     if (onAddEvent) {
       const pitchTime = newStat.video_timestamp ?? currentTime;
-      const leadIn = 2;
-      const leadOut = 3;
+      const leadIn = 3.0; // ワインドアップ開始前3秒
+      const leadOut = 3.0; // 捕球・打球判定後3秒
       const labels: Record<string, string> = {
         'AI判定': resMeta.label,
         '結果': resMeta.label,
@@ -457,7 +458,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           setStrikes(prev => prev + 1);
         }
       } else if (resMeta.type === 'foul') {
+        // ファール: 2ストライクまでは+1、2ストライク時はカウント維持
         setStrikes(prev => (prev < 2 ? prev + 1 : prev));
+        setLastNotification(`💥 ファール！ カウント維持（${balls}-${Math.min(2, strikes + 1)}）`);
       } else if (resMeta.type === 'inplay') {
         const isOut = Math.random() < 0.65;
         if (isOut) {
@@ -476,6 +479,42 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     }
   };
 
+  // -------------------------------------------------------------
+  // 6. DIRECT ONE-TAP RESULT TAGGING (S, B, F, H, K, W)
+  // -------------------------------------------------------------
+  const triggerDirectPitchTag = (resultType: string, customPitchType?: string) => {
+    const pitchTypes = ['4シーム', '2シーム', 'スライダー', 'カーブ', 'フォーク', 'カットボール'];
+    const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
+    
+    const pType = customPitchType || pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
+    const targetC = courses[Math.floor(Math.random() * courses.length)];
+    const isMiss = Math.random() < 0.25;
+    const actualC = isMiss ? courses[Math.floor(Math.random() * courses.length)] : targetC;
+    const missCm = isMiss ? parseFloat((Math.random() * 20 + 6).toFixed(1)) : parseFloat((Math.random() * 4).toFixed(1));
+    const missInches = parseFloat((missCm / 2.54).toFixed(1));
+    const speed = pType === '4シーム' ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
+
+    const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
+    const pitchTime = Number(curVidTime.toFixed(2));
+
+    const payload: AiStatPayload = {
+      result: resultType,
+      confidence: 1.0,
+      ball_speed: speed,
+      pitch_type: pType,
+      course: actualC,
+      camera_view: 'center',
+      target_course: targetC,
+      actual_course: actualC,
+      miss_distance_cm: missCm,
+      miss_distance_inch: missInches,
+      is_opposite: isMiss && Math.random() < 0.5,
+      video_timestamp: pitchTime
+    };
+
+    handleIngestStat(payload, false);
+  };
+
   const handleOverridePitch = (pitchNum: number, newResult: string) => {
     setHistory(prev => prev.map(item => {
       if (item.pitch_number !== pitchNum) return item;
@@ -491,7 +530,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   };
 
   // -------------------------------------------------------------
-  // 6. AUTO TAGGING SIMULATOR
+  // 7. AUTO TAGGING SIMULATOR
   // -------------------------------------------------------------
   const [isAutoTagging, setIsAutoTagging] = useState<boolean>(false);
   const autoTagTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -500,14 +539,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const pitchTypes = ['4シーム', '2シーム', 'スライダー', 'カーブ', 'フォーク', 'カットボール'];
     const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
     
+    // 確実なファール比率 (ストライク 28%, ボール 32%, ファール 22%, インプレー 12%, 三振 6%)
     const rRand = Math.random();
     let res = 'Strike';
-    if (rRand < 0.30) res = 'Strike';
-    else if (rRand < 0.58) res = 'Ball';
-    else if (rRand < 0.72) res = 'Foul';
-    else if (rRand < 0.85) res = 'InPlay';
-    else if (rRand < 0.93) res = 'SwingingK';
-    else res = 'Walk';
+    if (rRand < 0.28) res = 'Strike';
+    else if (rRand < 0.60) res = 'Ball';
+    else if (rRand < 0.82) res = 'Foul'; // ★ ファールを独立して高頻度に判定
+    else if (rRand < 0.94) res = 'InPlay';
+    else res = 'SwingingK';
 
     const pType = pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
     const targetC = courses[Math.floor(Math.random() * courses.length)];
@@ -518,7 +557,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const speed = pType === '4シーム' ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
 
     const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
-    const pitchTime = Number(curVidTime.toFixed(1));
+    const pitchTime = Number(curVidTime.toFixed(2));
 
     const payload: AiStatPayload = {
       result: res,
@@ -535,7 +574,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       video_timestamp: pitchTime
     };
 
-    handleIngestStat(payload);
+    handleIngestStat(payload, false);
   };
 
   const toggleAutoTagging = () => {
@@ -553,15 +592,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       triggerOneAutoPitch();
       autoTagTimerRef.current = setInterval(() => {
         triggerOneAutoPitch();
-      }, 3500);
-      setLastNotification('🚀 AI動画自動タグ付けを開始しました（動画と連動して1球ごとに自動打刻中）');
+      }, 4000);
+      setLastNotification('🚀 AI動画自動タグ付けを開始しました（動画再生に合わせて1球ごとに打刻中）');
     }
   };
 
-  // Keyboard shortcuts for live video tagging
+  // Keyboard shortcuts for live video tagging (B, S, F, H, K, W, Space, T)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when typing in input
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
 
       if (e.key === ' ' || e.code === 'Space') {
@@ -574,6 +612,24 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             videoPreviewRef.current.pause();
           }
         }
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        triggerDirectPitchTag('Ball');
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        triggerDirectPitchTag('Strike');
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        triggerDirectPitchTag('Foul');
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        triggerDirectPitchTag('InPlay');
+      } else if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        triggerDirectPitchTag('SwingingK');
+      } else if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        triggerDirectPitchTag('Walk');
       } else if (e.key === 't' || e.key === 'T' || e.key === 'Enter') {
         e.preventDefault();
         triggerOneAutoPitch();
@@ -979,6 +1035,75 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 </div>
               </div>
             )}
+
+            {/* ⚾ DIRECT LIVE PITCH TAGGING PAD (ファール・ストライク・ボール・インプレーをダイレクト打刻) */}
+            <div className="p-2.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 flex flex-col gap-2 shadow-lg">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                  ⚡ リアルタイム直接打刻パッド（動画再生中にキーまたはボタンを押すと即座に打刻）
+                </span>
+                <span className="text-[9.5px] font-mono text-zinc-400">
+                  動画秒数: {formatSeconds(videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime)}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-6 gap-1.5">
+                <button
+                  onClick={() => triggerDirectPitchTag('Ball')}
+                  className="py-2.5 px-1 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
+                  title="ボール判定を打刻 (ショートカット: Bキー)"
+                >
+                  <span className="text-xs font-black">ボール</span>
+                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-emerald-300 font-bold">[B]</span>
+                </button>
+
+                <button
+                  onClick={() => triggerDirectPitchTag('Strike')}
+                  className="py-2.5 px-1 rounded-xl bg-amber-600/30 hover:bg-amber-600/60 border border-amber-500/50 text-amber-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
+                  title="ストライク判定を打刻 (ショートカット: Sキー)"
+                >
+                  <span className="text-xs font-black">見逃しS</span>
+                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-amber-300 font-bold">[S]</span>
+                </button>
+
+                <button
+                  onClick={() => triggerDirectPitchTag('SwingingK')}
+                  className="py-2.5 px-1 rounded-xl bg-rose-600/30 hover:bg-rose-600/60 border border-rose-500/50 text-rose-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
+                  title="空振り三振判定を打刻 (ショートカット: Kキー)"
+                >
+                  <span className="text-xs font-black">空振りKs</span>
+                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-rose-300 font-bold">[K]</span>
+                </button>
+
+                {/* ★ ファールを独立して確実に打刻 */}
+                <button
+                  onClick={() => triggerDirectPitchTag('Foul')}
+                  className="py-2.5 px-1 rounded-xl bg-yellow-600/30 hover:bg-yellow-600/60 border border-yellow-500/60 text-yellow-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(234,179,8,0.2)]"
+                  title="ファール打球を打刻 (ショートカット: Fキー)"
+                >
+                  <span className="text-xs font-black">ファール</span>
+                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-yellow-300 font-bold">[F]</span>
+                </button>
+
+                <button
+                  onClick={() => triggerDirectPitchTag('InPlay')}
+                  className="py-2.5 px-1 rounded-xl bg-rose-500/30 hover:bg-rose-500/60 border border-rose-400/50 text-rose-100 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
+                  title="インプレー(フェア打球)を打刻 (ショートカット: Hキー)"
+                >
+                  <span className="text-xs font-black">インプレー</span>
+                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-rose-300 font-bold">[H]</span>
+                </button>
+
+                <button
+                  onClick={() => triggerDirectPitchTag('Walk')}
+                  className="py-2.5 px-1 rounded-xl bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/50 text-blue-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
+                  title="四球を打刻 (ショートカット: Wキー)"
+                >
+                  <span className="text-xs font-black">四球(BB)</span>
+                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-blue-300 font-bold">[W]</span>
+                </button>
+              </div>
+            </div>
 
             {/* Notification alert */}
             {lastNotification && (
