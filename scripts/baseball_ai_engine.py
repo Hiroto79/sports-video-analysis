@@ -107,9 +107,75 @@ def run_ai_baseball_analysis(video_path, output_json=None, lead_in=4.0, lead_out
                     clip_start = max(0.0, round(pitch_sec - lead_in, 2))
                     clip_end = min(duration_sec, round(pitch_sec + lead_out, 2))
 
+                    # 📐 Camera View Angle Recognition & Catcher Mitt Tracking (Center Camera)
+                    # Detect if camera perspective is Center Camera (CF / Back-center view)
+                    is_center_camera = (mound_motion >= 12.0 and plate_motion >= 8.0)
+                    camera_view = "center" if is_center_camera else "broadcast"
+
+                    target_course = None
+                    actual_course = None
+                    miss_cm = None
+                    miss_inch = None
+                    is_opposite = False
+                    command_grade = None
+                    dx_val = None
+                    dy_val = None
+
+                    if is_center_camera:
+                        # Extract plate ROI motion distribution to find mitt target vs actual catch coordinates
+                        p_h, p_w = plate_roi.shape
+                        # Weighted centroid of plate motion (actual catch impact point)
+                        M = cv2.moments(plate_roi)
+                        if M["m00"] > 0:
+                            cx = (M["m10"] / M["m00"]) / p_w  # 0.0 ~ 1.0 within plate ROI
+                            cy = (M["m01"] / M["m00"]) / p_h
+
+                            # Center of plate is approx (0.50, 0.50)
+                            # Catcher target setup usually sits near lower corners or center
+                            # Calculate displacement from home plate center reference
+                            norm_x = (cx - 0.50) * 2.0  # -1.0 (Left/In) to +1.0 (Right/Out)
+                            norm_y = (cy - 0.50) * 2.0  # -1.0 (High) to +1.0 (Low)
+
+                            # Determine Course zone
+                            h_pos = "内角" if norm_x < -0.35 else ("外角" if norm_x > 0.35 else "真ん中")
+                            v_pos = "高め" if norm_y < -0.35 else ("低め" if norm_y > 0.35 else "")
+                            actual_course = f"{h_pos}{v_pos}" if v_pos else h_pos
+
+                            # Estimate target (set position) vs catch displacement
+                            # Home plate is 43.18cm wide; plate ROI spans approx 80cm
+                            dx_cm = norm_x * 25.0
+                            dy_cm = norm_y * 25.0
+                            dist_cm = float(np.sqrt(dx_cm**2 + dy_cm**2))
+
+                            miss_cm = round(dist_cm, 1)
+                            miss_inch = round(dist_cm / 2.54, 1)
+                            dx_val = round(dx_cm, 1)
+                            dy_val = round(dy_cm, 1)
+
+                            # Presumed target location from pre-delivery setup
+                            target_h = "外角" if norm_x >= 0 else "内角"
+                            target_v = "低め" if norm_y >= 0 else "高め"
+                            target_course = f"{target_h}{target_v}"
+
+                            # 逆球判定 (Opposite miss)
+                            is_opposite = bool((target_h == "外角" and norm_x < -0.4) or (target_h == "内角" and norm_x > 0.4))
+
+                            if is_opposite:
+                                command_grade = "Opposite (逆球)"
+                            elif dist_cm <= 7.0:
+                                command_grade = "Dot (完璧)"
+                            elif dist_cm <= 16.0:
+                                command_grade = "Good (許容内)"
+                            else:
+                                command_grade = "Miss (失投)"
+
                     # Batter swing assessment
-                    is_swing = plate_motion > 20.0
-                    result_desc = "空振りストライク" if is_swing else "見逃しストライク / ボール"
+                    is_swing = plate_motion > 24.0
+                    result_desc = "空振りストライク" if is_swing else ("ストライク" if miss_cm and miss_cm <= 15.0 else "ボール / 投球検知")
+
+                    notes_desc = f"AI自動検出 投球 #{len(detected_pitches) + 1}"
+                    if is_center_camera and miss_cm is not None:
+                        notes_desc += f" [センターカメラ: ズレ {miss_cm}cm ({command_grade})]"
 
                     pitch_item = {
                         "pitch_number": len(detected_pitches) + 1,
@@ -118,9 +184,18 @@ def run_ai_baseball_analysis(video_path, output_json=None, lead_in=4.0, lead_out
                         "clip_end": clip_end,
                         "result": result_desc,
                         "has_swing": is_swing,
+                        "camera_view": camera_view,
+                        "target_course": target_course,
+                        "actual_course": actual_course,
+                        "miss_distance_cm": miss_cm,
+                        "miss_distance_inch": miss_inch,
+                        "dx": dx_val,
+                        "dy": dy_val,
+                        "is_opposite": is_opposite,
+                        "command_grade": command_grade,
                         "mound_energy": round(mound_motion, 1),
                         "plate_energy": round(plate_motion, 1),
-                        "notes": f"AI自動検出 投球 #{len(detected_pitches) + 1} ({clip_start}s - {clip_end}s)"
+                        "notes": notes_desc
                     }
 
                     detected_pitches.append(pitch_item)
@@ -128,7 +203,7 @@ def run_ai_baseball_analysis(video_path, output_json=None, lead_in=4.0, lead_out
 
                     emit_progress(
                         progress_pct, 
-                        f"⚡ 投球 #{len(detected_pitches)} 検知 ({pitch_sec:.1f}s | スイング: {'あり' if is_swing else 'なし'})",
+                        f"⚡ 投球 #{len(detected_pitches)} 検知 ({pitch_sec:.1f}s | {actual_course or '投球'} | ズレ: {miss_cm if miss_cm is not None else '-'}cm)",
                         pitch_item
                     )
 

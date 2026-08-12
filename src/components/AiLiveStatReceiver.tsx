@@ -943,7 +943,13 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               end_time: data.pitch.clip_end,
               result: data.pitch.result || (data.pitch.has_swing ? '空振りストライク' : '見逃しストライク'),
               pitch_type: selectedPitchType,
-              course: selectedCourse,
+              course: data.pitch.actual_course || selectedCourse,
+              camera_view: data.pitch.camera_view,
+              target_course: data.pitch.target_course,
+              actual_course: data.pitch.actual_course,
+              miss_distance_cm: data.pitch.miss_distance_cm,
+              miss_distance_inch: data.pitch.miss_distance_inch,
+              is_opposite: data.pitch.is_opposite,
               pitcher: currentPitcher.name,
               batter: `${currentBatter.order}番: ${currentBatter.name}`,
               defense: defense || '-',
@@ -957,7 +963,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               if (prev.some(p => p.pitch_number === livePitch.pitch_number)) return prev;
               return [livePitch, ...prev];
             });
-            setLastNotification(`⚡ 投球 #${livePitch.pitch_number} を検知しました（${formatSeconds(livePitch.video_timestamp || 0)}）- 下のテーブルで即時再生・確認可能`);
+            setLastNotification(`⚡ 投球 #${livePitch.pitch_number} を検知しました（${formatSeconds(livePitch.video_timestamp || 0)} | ズレ: ${data.pitch.miss_distance_cm !== undefined ? data.pitch.miss_distance_cm + 'cm' : '-'}）`);
             playBeep(880, 'sine');
           }
         });
@@ -978,7 +984,13 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             end_time: p.clip_end,
             result: p.result || (p.has_swing ? '空振りストライク' : '見逃しストライク'),
             pitch_type: selectedPitchType,
-            course: selectedCourse,
+            course: p.actual_course || selectedCourse,
+            camera_view: p.camera_view,
+            target_course: p.target_course,
+            actual_course: p.actual_course,
+            miss_distance_cm: p.miss_distance_cm,
+            miss_distance_inch: p.miss_distance_inch,
+            is_opposite: p.is_opposite,
             pitcher: currentPitcher.name,
             batter: `${currentBatter.order}番: ${currentBatter.name}`,
             defense: defense || '-',
@@ -2355,7 +2367,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                         {item.pitch_type || '4シーム'}
                       </td>
                       <td className="py-2.5 px-2 text-center font-sans text-zinc-300 text-xs">
-                        {item.course || item.actual_course || '-'}
+                        <div className="flex flex-col items-center justify-center">
+                          <span>{item.course || item.actual_course || '-'}</span>
+                          {item.miss_distance_cm !== undefined && (
+                            <span className={`text-[9px] font-mono font-bold ${item.is_opposite ? 'text-rose-400' : (item.miss_distance_cm <= 7 ? 'text-emerald-400' : 'text-amber-400')}`} title={`構え: ${item.target_course || '-'} → 着弾: ${item.actual_course || '-'}`}>
+                              ズレ {item.miss_distance_cm}cm {item.is_opposite ? '(逆球)' : ''}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2.5 px-2 text-center font-bold text-amber-400 text-xs">
                         {item.ball_speed ? `${item.ball_speed}km` : '-'}
