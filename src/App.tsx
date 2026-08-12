@@ -8,7 +8,6 @@ import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { OrganizerView } from './components/OrganizerView';
 import { MatrixView } from './components/MatrixView';
 import { MatrixPlayerModal } from './components/MatrixPlayerModal';
-import { AiLiveStatReceiver } from './components/AiLiveStatReceiver';
 import { supabase } from './lib/supabase';
 import { EventTimeline } from './components/EventTimeline';
 import { getMittDisplacementAtCatch } from './utils/baseballMittTracker';
@@ -1908,8 +1907,8 @@ function App() {
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [isBoxSelecting]);
 
-  // App View Mode State: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger' | 'ai_receiver'
-  const [currentView, setCurrentView] = useState<'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger' | 'ai_receiver'>('tagger');
+  // App View Mode State: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger'
+  const [currentView, setCurrentView] = useState<'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger'>('tagger');
 
   // Live Roster Accordion Open State
   const [isLiveRosterOpen, setIsLiveRosterOpen] = useState(false);
@@ -2976,7 +2975,7 @@ function App() {
   };
 
 
-  const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger' | 'ai_receiver') => {
+  const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger') => {
     try {
       const video = videoPlayerRef.current?.getVideoElement();
       if (video) {
@@ -5202,17 +5201,6 @@ function App() {
             >
               ⏱️ {appLanguage === 'en' ? 'No-Video Tagger' : '動画なし打刻 (現地)'}
             </button>
-            <button
-              onClick={() => handleViewChange('ai_receiver')}
-              className={`px-2 py-1 rounded text-[10px] font-extrabold transition-all cursor-pointer border ${
-                currentView === 'ai_receiver'
-                  ? 'bg-gradient-to-r from-sky-600 to-indigo-600 border-sky-400 text-white shadow shadow-sky-950'
-                  : 'bg-zinc-900/80 border-sky-900/50 text-sky-300 hover:text-white hover:bg-zinc-800'
-              }`}
-              title="Python画像解析AIからローカルPOSTされる投球判定をリアルタイム受信し、1タップで即座に修正します"
-            >
-              🤖 {appLanguage === 'en' ? 'AI Live Receiver' : 'AI自動受信・修正'}
-            </button>
           </div>
 
           {/* Change / Open Video Button */}
@@ -5391,7 +5379,7 @@ function App() {
       {/* 1. SHARED PERSISTENT VIDEO CONTAINER (Never unmounted, prevents black screen/reset bugs) */}
       {videoUrl && (
         <div 
-          style={{ display: currentView === 'analytics' || currentView === 'matrix' || currentView === 'live_tagger' || currentView === 'ai_receiver' ? 'none' : 'block' }}
+          style={{ display: currentView === 'analytics' || currentView === 'matrix' || currentView === 'live_tagger' ? 'none' : 'block' }}
           className={`shrink-0 w-full transition-all duration-300 ${
             currentView === 'organizer' && activeOrganizerTab === 'grid'
               ? 'sticky top-[52px] z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 shadow-xl max-w-full px-4 py-3'
@@ -5717,96 +5705,6 @@ function App() {
           teamAName={teamAName}
           teamBName={teamBName}
           currentUser={currentUser}
-        />
-      ) : currentView === 'ai_receiver' ? (
-        /* 🤖 外部AI リアルタイム自動受信 ＆ ワンタップ即時修正画面 */
-        <AiLiveStatReceiver
-          events={events}
-          players={players}
-          teamAName={teamAName || '先攻チーム'}
-          teamBName={teamBName || '後攻チーム'}
-          initialPitcherA={pitcherA || '投手A'}
-          initialPitcherB={pitcherB || '投手B'}
-          pitcherA={pitcherA}
-          pitcherB={pitcherB}
-          onUpdatePitcherA={(val) => {
-            setPitcherA(val);
-            channelRef.current?.postMessage({ type: 'UPDATE_PITCHER_A', value: val });
-          }}
-          onUpdatePitcherB={(val) => {
-            setPitcherB(val);
-            channelRef.current?.postMessage({ type: 'UPDATE_PITCHER_B', value: val });
-          }}
-          defense={inningHalf === 'top' ? defenseB : defenseA}
-          onUpdateDefense={(val) => {
-            if (inningHalf === 'top') {
-              setDefenseB(val);
-              channelRef.current?.postMessage({ type: 'UPDATE_DEFENSE_B', value: val });
-            } else {
-              setDefenseA(val);
-              channelRef.current?.postMessage({ type: 'UPDATE_DEFENSE_A', value: val });
-            }
-          }}
-          catcherId={inningHalf === 'top' ? catcherIdB : catcherIdA}
-          onUpdateCatcherId={id => inningHalf === 'top' ? setCatcherIdB(id) : setCatcherIdA(id)}
-          inf1Id={inningHalf === 'top' ? inf1IdB : inf1IdA}
-          onUpdateInf1Id={id => inningHalf === 'top' ? setInf1IdB(id) : setInf1IdA(id)}
-          inf2Id={inningHalf === 'top' ? inf2IdB : inf2IdA}
-          onUpdateInf2Id={id => inningHalf === 'top' ? setInf2IdB(id) : setInf2IdA(id)}
-          inf3Id={inningHalf === 'top' ? inf3IdB : inf3IdA}
-          onUpdateInf3Id={id => inningHalf === 'top' ? setInf3IdB(id) : setInf3IdA(id)}
-          inf4Id={inningHalf === 'top' ? inf4IdB : inf4IdA}
-          onUpdateInf4Id={id => inningHalf === 'top' ? setInf4IdB(id) : setInf4IdA(id)}
-          lfId={inningHalf === 'top' ? lfIdB : lfIdA}
-          onUpdateLfId={id => inningHalf === 'top' ? setLfIdB(id) : setLfIdA(id)}
-          cfId={inningHalf === 'top' ? cfIdB : cfIdA}
-          onUpdateCfId={id => inningHalf === 'top' ? setCfIdB(id) : setCfIdA(id)}
-          rfId={inningHalf === 'top' ? rfIdB : rfIdA}
-          onUpdateRfId={id => inningHalf === 'top' ? setRfIdB(id) : setRfIdA(id)}
-          dhId={inningHalf === 'top' ? dhIdB : dhIdA}
-          onUpdateDhId={id => inningHalf === 'top' ? setDhIdB(id) : setDhIdA(id)}
-          onUpdatePlayerBattingOrder={handleUpdatePlayerBattingOrder}
-          onUpdatePlayerHand={handleUpdatePlayerHand}
-          onUpdatePlayerThrows={handleUpdatePlayerThrows}
-          onUpdatePlayerBats={handleUpdatePlayerBats}
-          activePlayerId={activePlayerId}
-          onSelectPlayer={(id) => {
-            setActivePlayerId(id);
-            channelRef.current?.postMessage({ type: 'UPDATE_ACTIVE_PLAYER', activePlayerId: id });
-          }}
-          currentTime={currentTime}
-          inningNum={inningNum}
-          inningHalf={inningHalf}
-          videoUrl={videoUrl}
-          videoName={videoName}
-          onSeek={(time) => {
-            const video = videoPlayerRef.current?.getVideoElement();
-            if (video) video.currentTime = time;
-          }}
-          onUpdateInning={(num, half) => {
-            setInningNum(num);
-            setInningHalf(half);
-          }}
-          onNavigateToMatrix={() => handleViewChange('matrix')}
-          onNavigateToOrganizer={() => handleViewChange('organizer')}
-          onAddEvent={(newEvent) => {
-            // Use startTime/endTime and resolved playerName from AI
-            const ev: TaggedEvent = {
-              id: newEvent.id || `event_ai_${Date.now()}`,
-              timestamp: newEvent.timestamp ?? newEvent.startTime ?? currentTime,
-              startTime: newEvent.startTime ?? Math.max(0, currentTime - 2),
-              endTime: newEvent.endTime ?? (currentTime + 3),
-              actionId: newEvent.actionId || 'btn_pitch',
-              actionName: newEvent.actionName || '投球',
-              color: newEvent.color || 'bg-amber-600',
-              playerName: newEvent.playerName || (inningHalf === 'top' ? (pitcherB || '投手B') : (pitcherA || '投手A')),
-              labels: newEvent.labels || {},
-              createdAt: Date.now(),
-              gameDate: gameDate || new Date().toISOString().split('T')[0]
-            };
-            setEvents(prev => [...prev, ev]);
-            channelRef.current?.postMessage({ type: 'SYNC_EVENTS', events: [...events, ev] });
-          }}
         />
       ) : currentView === 'live_tagger' ? (
         /* ⏱️ 動画なし・超軽量ライブタギング専用画面 (Memory Leak & Crash FREE) */
