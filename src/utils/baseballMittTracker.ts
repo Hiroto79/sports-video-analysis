@@ -1,7 +1,7 @@
 /**
  * Baseball Catcher Mitt Computer Vision Tracker
- * Extracts catcher mitt target vs catch impact location and displacement (cm/inch)
- * directly from video frames when tagging in real-time or playback.
+ * Maintains a real-time sliding buffer of catcher mitt coordinates (Target Setup vs Catch Impact)
+ * to accurately measure displacement in cm when the user presses Pitch at ball arrival.
  */
 
 export interface MittTrackingResult {
@@ -9,24 +9,35 @@ export interface MittTrackingResult {
   targetCourse: string;
   actualCourse: string;
   missDistanceCm: number;
-  missDistanceInch: number;
+  dxCm: number;
+  dyCm: number;
   isOpposite: boolean;
-  commandGrade: 'Dot (完璧)' | 'Good (許容内)' | 'Miss (失投)' | 'Opposite (逆球)';
-  dx: number;
-  dy: number;
 }
 
-export function extractCatcherMittData(video: HTMLVideoElement): MittTrackingResult | null {
-  try {
-    if (!video || video.readyState < 2 || !video.videoWidth) return null;
+interface MittSample {
+  time: number;
+  normX: number;
+  normY: number;
+}
 
+// Sliding sample buffer for the past 4 seconds
+const mittSampleBuffer: MittSample[] = [];
+
+/**
+ * Record a frame sample while video is playing
+ */
+export function recordMittFrame(video: HTMLVideoElement): void {
+  try {
+    if (!video || video.readyState < 2 || !video.videoWidth) return;
+
+    const currentTime = video.currentTime;
     const width = 320;
     const height = 180;
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
+    if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, width, height);
     const imgData = ctx.getImageData(0, 0, width, height);
@@ -51,7 +62,7 @@ export function extractCatcherMittData(video: HTMLVideoElement): MittTrackingRes
         const r = data[idx];
         const g = data[idx + 1];
         const b = data[idx + 2];
-        
+
         // Glove / mitt contrast weight in home plate ROI
         const brightness = (r + g + b) / 3;
         const contrastWeight = Math.abs(brightness - 128);
@@ -62,58 +73,87 @@ export function extractCatcherMittData(video: HTMLVideoElement): MittTrackingRes
       }
     }
 
-    if (weightSum === 0) return null;
+    if (weightSum > 0) {
+      const centroidX = sumX / weightSum;
+      const centroidY = sumY / weightSum;
 
-    const centroidX = sumX / weightSum;
-    const centroidY = sumY / weightSum;
+      const normX = ((centroidX - midX) / ((xEnd - xStart) / 2));
+      const normY = ((centroidY - midY) / ((yEnd - yStart) / 2));
 
-    // Normalized position relative to center of home plate (-1.0 to 1.0)
-    const normX = ((centroidX - midX) / ((xEnd - xStart) / 2));
-    const normY = ((centroidY - midY) / ((yEnd - yStart) / 2));
+      mittSampleBuffer.push({ time: currentTime, normX, normY });
 
-    // Determine horizontal course (pitcher perspective: Left=In, Right=Out)
-    const hPos = normX < -0.28 ? '内角' : (normX > 0.28 ? '外角' : '真ん中');
-    const vPos = normY < -0.28 ? '高め' : (normY > 0.28 ? '低め' : '');
-    const actualCourse = vPos ? `${hPos}${vPos}` : hPos;
+      // Keep only samples within the last 5 seconds
+      while (mittSampleBuffer.length > 0 && mittSampleBuffer[0].time < currentTime - 5.0) {
+        mittSampleBuffer.shift();
+      }
+    }
+  } catch {
+    // Ignore frame read errors
+  }
+}
 
-    // Target setup estimate (pre-pitch target)
-    const targetH = normX >= 0 ? '外角' : '内角';
-    const targetV = normY >= 0 ? '低め' : '高め';
-    const targetCourse = `${targetH}${targetV}`;
+/**
+ * When the user presses Pitch at arrival/impact time,
+ * compare the pre-pitch setup position (t - 2.5s ~ t - 1.2s) vs current catch position (t).
+ */
+export function getMittDisplacementAtCatch(video: HTMLVideoElement): MittTrackingResult | null {
+  try {
+    if (!video) return null;
+    const catchTime = video.currentTime;
 
-    // Physical scale mapping based on standard home plate width 43.18cm
-    const dxCm = Math.round(normX * 22.0 * 10) / 10;
-    const dyCm = Math.round(normY * 22.0 * 10) / 10;
-    const distCm = Math.round(Math.sqrt(dxCm * dxCm + dyCm * dyCm) * 10) / 10;
-    const distInch = Math.round((distCm / 2.54) * 10) / 10;
+    // 1. Current catch position
+    let catchSample = mittSampleBuffer.find(s => Math.abs(s.time - catchTime) < 0.35);
+    if (!catchSample) {
+      recordMittFrame(video);
+      catchSample = mittSampleBuffer[mittSampleBuffer.length - 1];
+    }
+    if (!catchSample) return null;
+
+    // 2. Pre-pitch target setup position (1.2s to 2.8s before catch)
+    const targetWindowSamples = mittSampleBuffer.filter(
+      s => s.time >= catchTime - 2.8 && s.time <= catchTime - 1.0
+    );
+
+    let targetNormX = catchSample.normX;
+    let targetNormY = catchSample.normY;
+
+    if (targetWindowSamples.length > 0) {
+      // Average the stationary setup position
+      const avgX = targetWindowSamples.reduce((acc, s) => acc + s.normX, 0) / targetWindowSamples.length;
+      const avgY = targetWindowSamples.reduce((acc, s) => acc + s.normY, 0) / targetWindowSamples.length;
+      targetNormX = avgX;
+      targetNormY = avgY;
+    }
+
+    // Determine target course (構え)
+    const tHPos = targetNormX < -0.28 ? '内角' : (targetNormX > 0.28 ? '外角' : '真ん中');
+    const tVPos = targetNormY < -0.28 ? '高め' : (targetNormY > 0.28 ? '低め' : '');
+    const targetCourse = tVPos ? `${tHPos}${tVPos}` : tHPos;
+
+    // Determine actual catch course (着弾)
+    const aHPos = catchSample.normX < -0.28 ? '内角' : (catchSample.normX > 0.28 ? '外角' : '真ん中');
+    const aVPos = catchSample.normY < -0.28 ? '高め' : (catchSample.normY > 0.28 ? '低め' : '');
+    const actualCourse = aVPos ? `${aHPos}${aVPos}` : aHPos;
+
+    // Calculate displacement in centimeters (home plate standard = 43.18cm)
+    const dxCm = Math.round((catchSample.normX - targetNormX) * 22.0 * 10) / 10;
+    const dyCm = Math.round((catchSample.normY - targetNormY) * 22.0 * 10) / 10;
+    const missDistanceCm = Math.round(Math.sqrt(dxCm * dxCm + dyCm * dyCm) * 10) / 10;
 
     // 逆球判定 (Target was outside, but arrived inside or vice-versa)
-    const isOpposite = (targetH === '外角' && normX < -0.35) || (targetH === '内角' && normX > 0.35);
-
-    let commandGrade: 'Dot (完璧)' | 'Good (許容内)' | 'Miss (失投)' | 'Opposite (逆球)' = 'Good (許容内)';
-    if (isOpposite) {
-      commandGrade = 'Opposite (逆球)';
-    } else if (distCm <= 6.5) {
-      commandGrade = 'Dot (完璧)';
-    } else if (distCm <= 15.0) {
-      commandGrade = 'Good (許容内)';
-    } else {
-      commandGrade = 'Miss (失投)';
-    }
+    const isOpposite = (tHPos === '外角' && aHPos === '内角') || (tHPos === '内角' && aHPos === '外角');
 
     return {
       isCenterCamera: true,
       targetCourse,
       actualCourse,
-      missDistanceCm: distCm,
-      missDistanceInch: distInch,
-      isOpposite,
-      commandGrade,
-      dx: dxCm,
-      dy: dyCm
+      missDistanceCm,
+      dxCm,
+      dyCm,
+      isOpposite
     };
   } catch (err) {
-    console.error('Mitt tracking frame analysis error:', err);
+    console.error('Error computing mitt displacement:', err);
     return null;
   }
 }

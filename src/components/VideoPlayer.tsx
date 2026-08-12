@@ -17,6 +17,7 @@ export interface VideoPlayerRef {
 }
 
 import { formatCentiseconds } from '../utils/formatters';
+import { recordMittFrame } from '../utils/baseballMittTracker';
 
 export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
   onVideoLoaded,
@@ -78,6 +79,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
     const handleTimeUpdate = () => {
       const time = video.currentTime;
       setCurrentTime(time);
+      recordMittFrame(video);
       if (onTimeUpdateRef.current) onTimeUpdateRef.current(time);
     };
     const handleDurationChange = () => {

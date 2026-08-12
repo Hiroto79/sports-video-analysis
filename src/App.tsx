@@ -11,7 +11,7 @@ import { MatrixPlayerModal } from './components/MatrixPlayerModal';
 import { AiLiveStatReceiver } from './components/AiLiveStatReceiver';
 import { supabase } from './lib/supabase';
 import { EventTimeline } from './components/EventTimeline';
-import { extractCatcherMittData } from './utils/baseballMittTracker';
+import { getMittDisplacementAtCatch } from './utils/baseballMittTracker';
 import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users, Eye, EyeOff } from 'lucide-react';
 
 // Default initial roster
@@ -4296,18 +4296,14 @@ function App() {
       // 🧤 センターカメラ映像自動認識 ＆ キャッチャーミット（構え vs 捕球）データ自動抽出
       const videoEl = videoPlayerRef.current?.getVideoElement();
       if (videoEl) {
-        const mittData = extractCatcherMittData(videoEl);
+        const mittData = getMittDisplacementAtCatch(videoEl);
         if (mittData) {
           baseballLabels['構え(Target)'] = mittData.targetCourse;
           baseballLabels['着弾(Actual)'] = mittData.actualCourse;
-          baseballLabels['ズレ(cm)'] = `${mittData.missDistanceCm}cm`;
-          baseballLabels['ズレ(in)'] = `${mittData.missDistanceInch}in`;
+          baseballLabels['ズレ(cm)'] = `${mittData.missDistanceCm}`;
+          baseballLabels['ズレ_X(cm)'] = `${mittData.dxCm}`;
+          baseballLabels['ズレ_Y(cm)'] = `${mittData.dyCm}`;
           baseballLabels['逆球'] = mittData.isOpposite ? 'YES' : 'NO';
-          baseballLabels['コマンド判定'] = mittData.commandGrade;
-          if (!course || course === '-') {
-            baseballLabels['Course'] = mittData.actualCourse;
-            baseballLabels['コース'] = mittData.actualCourse;
-          }
         }
       }
 
