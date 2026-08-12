@@ -3,15 +3,10 @@ import {
   Radio, 
   Grid3X3, 
   Film, 
-  ChevronRight, 
-  ChevronLeft, 
   RefreshCw, 
   Play, 
   Trash2, 
-  Sliders,
-  Users,
-  Plus,
-  UserCheck
+  Sliders
 } from 'lucide-react';
 import type { TaggedEvent, Player } from '../types';
 
@@ -606,25 +601,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setLastNotification(`✏️ 投球 #${pitchNum} の判定を「${normalizeResult(newResult).label}」に修正しました`);
   };
 
-  // 投手追加ハンドラー
-  const handleAddPitcher = (team: 'A' | 'B') => {
-    const newName = prompt('追加する投手名を入力してください:', `リリーフ${team === 'A' ? teamAName : teamBName}`);
-    if (!newName) return;
-    const newP: PitcherEntry = {
-      id: `p_${Date.now()}`,
-      name: newName.trim(),
-      role: '中継ぎ',
-      hand: 'R'
-    };
-    if (team === 'A') {
-      setPitchersTeamA(prev => [...prev, newP]);
-      setActivePitcherIdxA(pitchersTeamA.length);
-    } else {
-      setPitchersTeamB(prev => [...prev, newP]);
-      setActivePitcherIdxB(pitchersTeamB.length);
-    }
-    setLastNotification(`🧢 新しい投手「${newName}」を登録し、登板投手に設定しました`);
-  };
+
 
   // Keyboard shortcuts for live video tagging (B, S, F, H, K, W, Space)
   useEffect(() => {
@@ -897,231 +874,146 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         </div>
       </div>
 
-      {/* 2. MATCH STATUS & BSO COUNT BAR */}
-      <div className="glass-panel p-3 rounded-2xl border border-zinc-800/90 bg-zinc-900/90 shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 font-mono">
-            <button
-              onClick={() => {
-                const next = Math.max(1, currentInning - 1);
+      {/* 2. MATCH STATUS & BSO COUNT BAR - コードウィンドウ式セレクター */}
+      <div className="glass-panel px-3 py-2 rounded-2xl border border-zinc-800/90 bg-zinc-900/90 shadow-xl flex flex-wrap items-center gap-3">
+
+        {/* イニング選択 */}
+        <div className="flex flex-col gap-0.5">
+          <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">イニング</label>
+          <div className="flex items-center gap-1 h-8">
+            <select
+              value={currentInning}
+              onChange={(e) => {
+                const next = Number(e.target.value);
                 setCurrentInning(next);
                 onUpdateInning?.(next, currentHalf);
               }}
-              className="text-zinc-500 hover:text-zinc-200 px-1 text-xs font-bold"
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-1 text-xs text-zinc-200 focus:outline-none focus:border-sky-500 h-8 cursor-pointer"
             >
-              -
-            </button>
-            <span className="text-xs sm:text-sm font-black text-amber-400 min-w-[50px] text-center">
-              {currentInning}回{currentHalf === 'top' ? '表' : '裏'}
-            </span>
-            <button
-              onClick={() => {
-                const next = currentInning + 1;
-                setCurrentInning(next);
-                onUpdateInning?.(next, currentHalf);
-              }}
-              className="text-zinc-500 hover:text-zinc-200 px-1 text-xs font-bold"
-            >
-              +
-            </button>
-            <button
-              onClick={() => {
-                const nextHalf = currentHalf === 'top' ? 'bottom' : 'top';
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                <option key={n} value={n}>{n}回</option>
+              ))}
+            </select>
+            <select
+              value={currentHalf}
+              onChange={(e) => {
+                const nextHalf = e.target.value as 'top' | 'bottom';
                 setCurrentHalf(nextHalf);
                 onUpdateInning?.(currentInning, nextHalf);
               }}
-              className="ml-1 px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-bold text-zinc-300 cursor-pointer"
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-1 text-xs text-zinc-200 focus:outline-none focus:border-sky-500 h-8 cursor-pointer"
             >
-              {currentHalf === 'top' ? '表' : '裏'}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 bg-zinc-950/80 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs">
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-              守備投手
-            </span>
-            <span className="font-bold text-zinc-100">{currentPitcher.name}</span>
-          </div>
-
-          <div className="flex items-center gap-1 bg-zinc-950/80 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs">
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
-              打者
-            </span>
-            <button onClick={prevBatter} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white cursor-pointer">
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <span className="font-bold text-sky-300 min-w-[90px] text-center">
-              {currentBatter.order}番 {currentBatter.name}
-            </span>
-            <button onClick={nextBatter} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white cursor-pointer">
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+              <option value="top">表</option>
+              <option value="bottom">裏</option>
+            </select>
           </div>
         </div>
 
-        {/* BSO Board & Reset */}
-        <div className="flex items-center gap-3 self-end sm:self-auto">
-          <div className="flex items-center gap-3 bg-zinc-950 px-3.5 py-1.5 rounded-xl border border-zinc-850 font-mono text-xs">
-            <div className="flex items-center gap-1">
-              <span className="font-black text-emerald-400 w-3">B</span>
-              <div className="flex gap-1">
-                {[0, 1, 2].map(i => (
-                  <span
-                    key={i}
-                    onClick={() => setBalls(i + 1 === balls ? i : i + 1)}
-                    className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${
-                      i < balls ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-zinc-800'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
+        {/* 打者セレクター ◀ [ドロップダウン] ▶ */}
+        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+          <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">打者 [攻: {currentHalf === 'top' ? teamAName : teamBName}]</label>
+          <div className="flex items-center gap-1 h-8">
+            <button
+              type="button"
+              onClick={prevBatter}
+              className="px-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs border border-zinc-700 h-8 flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow"
+            >◄</button>
+            <select
+              value={activeBatterIdx}
+              onChange={(e) => setActiveBatterIdx(Number(e.target.value))}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 text-xs focus:outline-none h-8 text-zinc-100 flex-1 min-w-0 cursor-pointer font-bold"
+            >
+              {activeLineup.map((b, idx) => (
+                <option key={idx} value={idx}>{b.order}番: {b.number ? `#${b.number} ` : ''}{b.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={nextBatter}
+              className="px-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs border border-zinc-700 h-8 flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow"
+            >►</button>
+          </div>
+        </div>
 
-            <div className="flex items-center gap-1">
-              <span className="font-black text-amber-400 w-3">S</span>
-              <div className="flex gap-1">
-                {[0, 1].map(i => (
-                  <span
-                    key={i}
-                    onClick={() => setStrikes(i + 1 === strikes ? i : i + 1)}
-                    className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${
-                      i < strikes ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'bg-zinc-800'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
+        {/* 守備投手表示 */}
+        <div className="flex flex-col gap-0.5">
+          <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">守備投手 [守: {currentHalf === 'top' ? teamBName : teamAName}]</label>
+          <select
+            value={activePitcherIdx}
+            onChange={(e) => setActivePitcherIdx(Number(e.target.value))}
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 text-xs focus:outline-none h-8 text-amber-300 cursor-pointer font-bold"
+          >
+            {activePitcherList.map((p, idx) => (
+              <option key={p.id} value={idx}>{p.role || `投手${idx + 1}`}: {p.name}</option>
+            ))}
+          </select>
+        </div>
 
-            <div className="flex items-center gap-1">
-              <span className="font-black text-rose-400 w-3">O</span>
-              <div className="flex gap-1">
-                {[0, 1].map(i => (
-                  <span
-                    key={i}
-                    onClick={() => setOuts(i + 1 === outs ? i : i + 1)}
-                    className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${
-                      i < outs ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'bg-zinc-800'
-                    }`}
-                  />
-                ))}
-              </div>
+        {/* BSO Board */}
+        <div className="flex items-center gap-2 bg-zinc-950 px-3 py-1 rounded-xl border border-zinc-850 font-mono text-xs">
+          <div className="flex items-center gap-1">
+            <span className="font-black text-emerald-400 w-3">B</span>
+            <div className="flex gap-1">
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  onClick={() => setBalls(i + 1 === balls ? i : i + 1)}
+                  className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${
+                    i < balls ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-zinc-800'
+                  }`}
+                />
+              ))}
             </div>
           </div>
-
-          <button
-            onClick={resetCount}
-            className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-[10px] font-bold border border-zinc-700 cursor-pointer"
-            title="カウントリセット"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={changeInning}
-            className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 text-xs font-bold border border-amber-500/40 cursor-pointer"
-          >
-            チェンジ
-          </button>
+          <div className="flex items-center gap-1">
+            <span className="font-black text-amber-400 w-3">S</span>
+            <div className="flex gap-1">
+              {[0, 1].map(i => (
+                <span
+                  key={i}
+                  onClick={() => setStrikes(i + 1 === strikes ? i : i + 1)}
+                  className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${
+                    i < strikes ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'bg-zinc-800'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="font-black text-rose-400 w-3">O</span>
+            <div className="flex gap-1">
+              {[0, 1].map(i => (
+                <span
+                  key={i}
+                  onClick={() => setOuts(i + 1 === outs ? i : i + 1)}
+                  className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${
+                    i < outs ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'bg-zinc-800'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
+
+        <button
+          onClick={resetCount}
+          className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-[10px] font-bold border border-zinc-700 cursor-pointer"
+          title="カウントリセット"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={changeInning}
+          className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 text-xs font-bold border border-amber-500/40 cursor-pointer"
+        >
+          チェンジ
+        </button>
+
       </div>
 
-      {/* 3. PRO UNIFIED WORKSPACE: LINEUP/PITCHER PANEL (Left) + VIDEO PLAYER & TAGGING CONSOLE (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        
-        {/* Left Column: 打順表 (1〜9番) ＆ 登板投手一覧 (何人でも追加・交代可能) (Col 4) */}
-        <div className="lg:col-span-4 flex flex-col gap-3">
-          
-          {/* 打順表 (1〜9番) */}
-          <div className="glass-panel p-3 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-2 shadow-xl">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-              <div className="flex items-center gap-1.5">
-                <UserCheck className="w-4 h-4 text-sky-400" />
-                <span className="text-xs font-black text-sky-300">
-                  {currentHalf === 'top' ? teamAName : teamBName} 打順表 (1〜9番)
-                </span>
-              </div>
-              <span className="text-[10px] text-zinc-500">クリックで打者切替</span>
-            </div>
 
-            <div className="flex flex-col gap-1">
-              {activeLineup.map((b, idx) => {
-                const isActive = activeBatterIdx === idx;
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => setActiveBatterIdx(idx)}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-sky-600/30 border-sky-500/70 text-white shadow-[0_0_10px_rgba(14,165,233,0.3)] font-black'
-                        : 'bg-zinc-900/60 border-zinc-850 hover:bg-zinc-850 text-zinc-300 font-bold'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className={`w-5 font-mono ${isActive ? 'text-sky-300 font-black' : 'text-zinc-500'}`}>
-                        {b.order}番
-                      </span>
-                      <span className="truncate max-w-[120px]">{b.name}</span>
-                      {b.number && <span className="text-[10px] text-zinc-500">#{b.number}</span>}
-                    </div>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
-                      {b.hand === 'L' ? '左打' : b.hand === 'S' ? '両打' : '右打'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 登板投手一覧 (何人でも追加・即時交代可能) */}
-          <div className="glass-panel p-3 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-2 shadow-xl">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-              <div className="flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-black text-amber-300">
-                  {currentHalf === 'top' ? teamBName : teamAName} 登板投手陣 ({activePitcherList.length}人)
-                </span>
-              </div>
-              <button
-                onClick={() => handleAddPitcher(currentHalf === 'top' ? 'B' : 'A')}
-                className="flex items-center gap-1 text-[10px] bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 px-2 py-0.5 rounded-lg cursor-pointer"
-                title="新しい投手を登録して即時交代"
-              >
-                <Plus className="w-3 h-3" /> 投手追加
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto">
-              {activePitcherList.map((p, idx) => {
-                const isActive = activePitcherIdx === idx;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setActivePitcherIdx(idx)}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-amber-600/30 border-amber-500/70 text-white shadow-[0_0_10px_rgba(245,158,11,0.3)] font-black'
-                        : 'bg-zinc-900/60 border-zinc-850 hover:bg-zinc-850 text-zinc-300 font-bold'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className={`text-[10px] font-mono px-1 py-0.2 rounded ${isActive ? 'bg-amber-500 text-black font-black' : 'bg-zinc-800 text-zinc-400'}`}>
-                        {p.role || `投手${idx + 1}`}
-                      </span>
-                      <span className="truncate max-w-[120px]">{p.name}</span>
-                      {p.number && <span className="text-[10px] text-zinc-500">#{p.number}</span>}
-                    </div>
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      {p.hand === 'L' ? '左投' : '右投'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-        </div>
-
-        {/* Right Column: 統合メイン動画プレイヤー ＆ 1球ダイレクト打刻コンソール (Col 8) */}
-        <div className="lg:col-span-8 flex flex-col gap-3">
+      {/* 3. UNIFIED VIDEO PLAYER & TAGGING CONSOLE - FULL WIDTH */}
+      <div className="flex flex-col gap-3">
           
           {/* Main Unified Video Player */}
           <div className="glass-panel p-3 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-2 shadow-xl">
@@ -1400,9 +1292,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             )}
           </div>
 
-        </div>
-
       </div>
+
 
       {/* 4. COMPLETE PITCH LOG TABLE (投球始動から捕球までの完全クリップ一覧) */}
       <div className="glass-panel p-4 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-3 shadow-xl">
