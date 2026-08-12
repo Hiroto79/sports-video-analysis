@@ -32,17 +32,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
   const [isDragOver, setIsDragOver] = useState(false);
   const seekTimeoutRef = useRef<number | null>(null);
 
-  // Revoke old object URLs on change or unmount to prevent memory leaks
+  // Clean up seek timeouts
   useEffect(() => {
     return () => {
-      if (videoUrl && videoUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(videoUrl);
-      }
       if (seekTimeoutRef.current) {
         clearTimeout(seekTimeoutRef.current);
       }
     };
-  }, [videoUrl]);
+  }, []);
 
   // Expose controls to the parent component
   useImperativeHandle(ref, () => ({
@@ -52,7 +49,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
     seekTo: (time: number) => {
       if (videoRef.current) {
         // Seek to time, capped between 0 and duration
-        const targetTime = Math.max(0, Math.min(time, duration));
+        const maxD = duration > 0 ? duration : (videoRef.current.duration || 99999);
+        const targetTime = Math.max(0, Math.min(time, maxD));
         videoRef.current.currentTime = targetTime;
         setCurrentTime(targetTime);
         if (onTimeUpdate) onTimeUpdate(targetTime);
@@ -82,23 +80,40 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
       setCurrentTime(time);
       if (onTimeUpdateRef.current) onTimeUpdateRef.current(time);
     };
-    const handleDurationChange = () => setDuration(video.duration);
+    const handleDurationChange = () => {
+      if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
+        setDuration(video.duration);
+      }
+    };
+    const handleLoadedMetadata = () => {
+      if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
+        setDuration(video.duration);
+      }
+      setIsPlaying(!video.paused);
+      setCurrentTime(video.currentTime || 0);
+    };
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('durationchange', handleDurationChange);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('canplay', handleLoadedMetadata);
 
     // Initial check
+    if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
+      setDuration(video.duration);
+    }
     setIsPlaying(!video.paused);
-    setCurrentTime(video.currentTime);
-    setDuration(video.duration || 0);
+    setCurrentTime(video.currentTime || 0);
 
     return () => {
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('durationchange', handleDurationChange);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('canplay', handleLoadedMetadata);
     };
   }, [videoUrl]);
 
@@ -199,8 +214,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
             src={videoUrl}
             className="w-full h-full object-contain max-h-[500px]"
             onClick={handleTogglePlay}
-            preload="metadata"
+            preload="auto"
             playsInline
+            onError={(e) => {
+              console.error("Video load error", e);
+            }}
           />
         ) : (
           <div
@@ -214,11 +232,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(({
             }`}
           >
             <Upload className={`w-12 h-12 mb-4 transition-transform duration-300 ${isDragOver ? 'translate-y-[-4px] text-emerald-400' : 'text-zinc-500'}`} />
-            <p className="text-sm font-semibold text-zinc-300 mb-2">Drag and drop local video file here</p>
-            <p className="text-xs text-zinc-500 mb-4">Supports MP4, MOV, WebM (up to 2GB+ files)</p>
+            <p className="text-sm font-semibold text-zinc-300 mb-2">
+              {videoName ? `「${videoName}」を選択してください` : '動画ファイルをドラッグ＆ドロップ'}
+            </p>
+            <p className="text-xs text-zinc-500 mb-4">MP4, MOV, WebM 対応（ブラウザ再読み込み時は動画の再選択が必要です）</p>
             
-            <label className="cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white px-4 py-2 rounded-lg text-sm border border-zinc-700 font-medium shadow-md">
-              Choose Local Video
+            <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg transition-all active:scale-95 flex items-center gap-2">
+              <Upload className="w-4 h-4" />
+              <span>動画ファイルを選択</span>
               <input
                 type="file"
                 accept="video/*"
