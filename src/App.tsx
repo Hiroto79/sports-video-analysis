@@ -11,6 +11,7 @@ import { MatrixPlayerModal } from './components/MatrixPlayerModal';
 import { AiLiveStatReceiver } from './components/AiLiveStatReceiver';
 import { supabase } from './lib/supabase';
 import { EventTimeline } from './components/EventTimeline';
+import { extractCatcherMittData } from './utils/baseballMittTracker';
 import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users, Eye, EyeOff } from 'lucide-react';
 
 // Default initial roster
@@ -4291,6 +4292,24 @@ function App() {
         'Center Field': resolvedCFId ? (players.find(p => p.id === resolvedCFId || p.name === resolvedCFId)?.name || resolvedCFId) : '-',
         'Right Field': resolvedRFId ? (players.find(p => p.id === resolvedRFId || p.name === resolvedRFId)?.name || resolvedRFId) : '-'
       };
+
+      // 🧤 センターカメラ映像自動認識 ＆ キャッチャーミット（構え vs 捕球）データ自動抽出
+      const videoEl = videoPlayerRef.current?.getVideoElement();
+      if (videoEl) {
+        const mittData = extractCatcherMittData(videoEl);
+        if (mittData) {
+          baseballLabels['構え(Target)'] = mittData.targetCourse;
+          baseballLabels['着弾(Actual)'] = mittData.actualCourse;
+          baseballLabels['ズレ(cm)'] = `${mittData.missDistanceCm}cm`;
+          baseballLabels['ズレ(in)'] = `${mittData.missDistanceInch}in`;
+          baseballLabels['逆球'] = mittData.isOpposite ? 'YES' : 'NO';
+          baseballLabels['コマンド判定'] = mittData.commandGrade;
+          if (!course || course === '-') {
+            baseballLabels['Course'] = mittData.actualCourse;
+            baseballLabels['コース'] = mittData.actualCourse;
+          }
+        }
+      }
 
       preSelectedLabels.forEach((lblId) => {
         const lblBtn = buttons.find(b => b.id === lblId);
