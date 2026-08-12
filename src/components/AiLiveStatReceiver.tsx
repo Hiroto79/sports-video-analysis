@@ -207,10 +207,10 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // Settings Modal & Precision Tuning
   const [isSettingOpen, setIsSettingOpen] = useState<boolean>(false);
 
-  // 🎯 Precision Lead-in & Lead-out Timing
+  // 🎯 Precision Lead-in & Lead-out Timing (ワインドアップ始動から捕球までを完全カバー)
   const [leadInSec, setLeadInSec] = useState<number>(() => {
     const saved = localStorage.getItem('ai_receiver_lead_in');
-    return saved ? parseFloat(saved) : 4.5; // デフォルト投球前 4.5秒 (ワインドアップ始動)
+    return saved ? Math.max(5.5, parseFloat(saved)) : 5.5; // デフォルト投球前 5.5秒 (投手が足を上げる始動シーン)
   });
   const [leadOutSec, setLeadOutSec] = useState<number>(() => {
     const saved = localStorage.getItem('ai_receiver_lead_out');
@@ -359,23 +359,34 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   };
 
   // -------------------------------------------------------------
-  // 3. JUMP TO VIDEO TIMESTAMP (投球始動へ確実にシーク)
+  // 3. JUMP TO VIDEO TIMESTAMP (投球始動へ確実にシーク＆再生)
   // -------------------------------------------------------------
   const seekAndPlayVideo = (timeSec: number, pitchNum?: number) => {
     if (pitchNum !== undefined) setActiveSeekingPitchNum(pitchNum);
     
-    // 対象の投球データを検索して独立プレビュープレイヤーに設定
-    const target = history.find(item => item.pitch_number === pitchNum) || {
-      pitch_number: pitchNum,
-      video_timestamp: timeSec,
-      start_time: Math.max(0, timeSec - leadInSec),
-      end_time: timeSec + leadOutSec,
-      result: 'Strike'
-    };
-    setSelectedPreviewPitch(target as AiStatPayload);
-
-    // メインの自動タグ付けマスター動画は巻き戻さず、先へ先へと進み続ける
-    setLastNotification(`🎬 投球 #${pitchNum || ''} のクリッププレビューを開きました（自動タグ付けはバックグラウンドで先へ進み続けます）`);
+    // 投球始動地点（ワインドアップ: timeSec - leadInSec, 最低 5.5秒前に戻す）
+    const rewindSec = leadInSec > 0 ? leadInSec : 5.5;
+    const motionStartTime = Math.max(0, timeSec - rewindSec);
+    
+    if (videoPreviewRef.current) {
+      const vid = videoPreviewRef.current;
+      vid.muted = true;
+      vid.currentTime = motionStartTime;
+      vid.playbackRate = playbackSpeed;
+      const playPromise = vid.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          setTimeout(() => {
+            if (vid) {
+              vid.currentTime = motionStartTime;
+              vid.play().catch(() => {});
+            }
+          }, 80);
+        });
+      }
+    }
+    
+    setLastNotification(`🎬 投球 #${pitchNum || ''} のワインドアップ始動（${formatSeconds(motionStartTime)}〜）から再生開始`);
   };
 
   // -------------------------------------------------------------
