@@ -197,6 +197,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // 2. RECEIVER & HISTORY STATE
   // -------------------------------------------------------------
   const [history, setHistory] = useState<AiStatPayload[]>([]);
+  const pitchCounterRef = useRef<number>(0);
   const [lastNotification, setLastNotification] = useState<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -280,7 +281,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     if (videoPreviewRef.current) {
       const vid = videoPreviewRef.current;
       vid.muted = true;
-      const target = Math.max(0, timeSec - 1.5);
+      const target = Math.max(0, timeSec - 1.2);
       vid.currentTime = target;
       vid.playbackRate = playbackSpeed;
       vid.play().catch(e => console.warn('Play interrupted:', e));
@@ -340,10 +341,12 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   };
 
   // -------------------------------------------------------------
-  // 5. INGEST STAT HANDLER
+  // 5. INGEST STAT HANDLER (確実に通算投球番号をインクリメント)
   // -------------------------------------------------------------
   const handleIngestStat = (rawPayload: AiStatPayload) => {
-    const nextPitchNum = rawPayload.pitch_number || (history.length + 1);
+    pitchCounterRef.current += 1;
+    const nextPitchNum = rawPayload.pitch_number || pitchCounterRef.current;
+    
     const newStat: AiStatPayload = {
       ...rawPayload,
       pitch_number: nextPitchNum,
@@ -551,10 +554,30 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     }
   };
 
+  // Keyboard shortcuts for live video tagging
   useEffect(() => {
-    return () => {
-      if (autoTagTimerRef.current) clearInterval(autoTagTimerRef.current);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore when typing in input
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        if (videoPreviewRef.current) {
+          if (videoPreviewRef.current.paused) {
+            videoPreviewRef.current.muted = true;
+            videoPreviewRef.current.play();
+          } else {
+            videoPreviewRef.current.pause();
+          }
+        }
+      } else if (e.key === 't' || e.key === 'T' || e.key === 'Enter') {
+        e.preventDefault();
+        triggerOneAutoPitch();
+      }
     };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   return (
@@ -866,8 +889,22 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
             {/* Quick Video Action Bar */}
             {videoUrl && (
-              <div className="flex items-center justify-between px-1 py-0.5 bg-zinc-900/60 rounded-xl border border-zinc-850 text-xs">
-                <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-1.5 bg-zinc-900/80 rounded-xl border border-zinc-850 text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => {
+                      if (videoPreviewRef.current) {
+                        videoPreviewRef.current.currentTime = 0;
+                        videoPreviewRef.current.play().catch(() => {});
+                      }
+                      onSeek?.(0);
+                      setLastNotification('⏮️ 初球シーン (00:00) へジャンプしました');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-[11px] cursor-pointer active:scale-95"
+                    title="動画の最初（初球前）へジャンプ"
+                  >
+                    ⏮️ 初球へ
+                  </button>
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
@@ -886,32 +923,43 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
-                        videoPreviewRef.current.currentTime = Math.max(0, videoPreviewRef.current.currentTime - 5);
+                        videoPreviewRef.current.currentTime = Math.max(0, videoPreviewRef.current.currentTime - 3);
                       }
                     }}
                     className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] cursor-pointer"
                   >
-                    ⏪ -5秒
+                    ⏪ -3秒
                   </button>
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
-                        videoPreviewRef.current.currentTime = videoPreviewRef.current.currentTime + 5;
+                        videoPreviewRef.current.currentTime = videoPreviewRef.current.currentTime + 3;
                       }
                     }}
                     className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] cursor-pointer"
                   >
-                    ⏩ +5秒
+                    ⏩ +3秒
                   </button>
                 </div>
-                {latestStat?.video_timestamp !== undefined && (
+                
+                <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => seekAndPlayVideo(latestStat.video_timestamp!, latestStat.pitch_number)}
-                    className="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 font-bold text-[10px] cursor-pointer"
+                    onClick={triggerOneAutoPitch}
+                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow border border-emerald-400 cursor-pointer active:scale-95 flex items-center gap-1"
+                    title="動画の現在の秒数で即座に1球タグ付け"
                   >
-                    🔁 最新の1球（#{latestStat.pitch_number}）へジャンプ
+                    <Zap className="w-3 h-3" />
+                    <span>⚡ この瞬間に1球打刻</span>
                   </button>
-                )}
+                  {latestStat?.video_timestamp !== undefined && (
+                    <button
+                      onClick={() => seekAndPlayVideo(latestStat.video_timestamp!, latestStat.pitch_number)}
+                      className="px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 font-bold text-[10px] cursor-pointer"
+                    >
+                      🔁 直前の投球へ
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
