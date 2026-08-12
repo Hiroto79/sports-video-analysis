@@ -171,6 +171,10 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [activeSeekingPitchNum, setActiveSeekingPitchNum] = useState<number | null>(null);
+  const [firstPitchTimestamp, setFirstPitchTimestamp] = useState<number | null>(() => {
+    const saved = localStorage.getItem('ai_receiver_first_pitch_time');
+    return saved ? parseFloat(saved) : null;
+  });
 
   useEffect(() => {
     localStorage.setItem('ai_receiver_lineup_top', JSON.stringify(lineupTop));
@@ -891,20 +895,33 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             {videoUrl && (
               <div className="flex flex-wrap items-center justify-between gap-2 p-1.5 bg-zinc-900/80 rounded-xl border border-zinc-850 text-xs">
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* 📍 1球目(初球)マーカーボタン */}
                   <button
                     onClick={() => {
-                      if (videoPreviewRef.current) {
-                        videoPreviewRef.current.currentTime = 0;
-                        videoPreviewRef.current.play().catch(() => {});
-                      }
-                      onSeek?.(0);
-                      setLastNotification('⏮️ 初球シーン (00:00) へジャンプしました');
+                      const cur = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
+                      setFirstPitchTimestamp(cur);
+                      localStorage.setItem('ai_receiver_first_pitch_time', cur.toString());
+                      setLastNotification(`📍 初球（1球目）開始地点を「${formatSeconds(cur)}」に設定しました`);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-[11px] cursor-pointer active:scale-95"
-                    title="動画の最初（初球前）へジャンプ"
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-[11px] cursor-pointer active:scale-95 flex items-center gap-1"
+                    title="動画の現在の秒数を「初球開始地点」として記憶します"
                   >
-                    ⏮️ 初球へ
+                    <span>📍 ここを初球に設定</span>
                   </button>
+
+                  {firstPitchTimestamp !== null && (
+                    <button
+                      onClick={() => {
+                        seekAndPlayVideo(firstPitchTimestamp);
+                        setLastNotification(`⏮️ 設定した初球地点（${formatSeconds(firstPitchTimestamp)}）へジャンプしました`);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/40 font-bold text-[11px] cursor-pointer active:scale-95"
+                      title="設定済みの初球地点へ瞬時に戻ります"
+                    >
+                      ⏮️ 初球({formatSeconds(firstPitchTimestamp)})へ
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
