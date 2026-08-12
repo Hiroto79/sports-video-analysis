@@ -8,6 +8,7 @@ import {
   Trash2, 
   Sliders
 } from 'lucide-react';
+import { fetchMlbGameRealPitches } from '../services/mlbStatcastService';
 import type { TaggedEvent, Player } from '../types';
 
 export interface AiStatPayload {
@@ -821,6 +822,62 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     );
   };
 
+  // 📡 Real MLB Statcast & Gameday Synchronizer
+  const [isImportingStatcast, setIsImportingStatcast] = useState<boolean>(false);
+
+  const handleImportRealStatcast = async () => {
+    try {
+      setIsImportingStatcast(true);
+      setLastNotification('📡 MLB公式Statcast APIから実投球データを取得中...');
+      const data = await fetchMlbGameRealPitches('2023-08-13', 'Mets', 'Braves');
+
+      if (!data.pitches || data.pitches.length === 0) {
+        alert('Statcastデータの取得に失敗しました');
+        setIsImportingStatcast(false);
+        return;
+      }
+
+      // Convert Statcast real pitches to AiStatPayload
+      const baseTime = firstPitchTimestamp !== null ? firstPitchTimestamp : (currentVideoTime > 0 ? currentVideoTime : 5.0);
+      const avgPitchIntervalSec = 22.5;
+
+      const converted: AiStatPayload[] = data.pitches.map((p, idx) => {
+        const estTimestamp = Number((baseTime + idx * avgPitchIntervalSec).toFixed(2));
+        const clipStart = Math.max(0, estTimestamp - leadInSec);
+        const clipEnd = estTimestamp + leadOutSec;
+
+        return {
+          pitch_number: p.pitch_number,
+          result: p.result,
+          confidence: 1.0,
+          ball_speed: p.ball_speed,
+          pitch_type: p.pitch_type,
+          course: p.course,
+          target_course: p.course,
+          actual_course: p.course,
+          miss_distance_cm: 0,
+          video_timestamp: estTimestamp,
+          start_time: clipStart,
+          end_time: clipEnd,
+          receivedAt: `${p.inning}回${p.half === 'top' ? '表' : '裏'} (${p.count.balls}-${p.count.strikes})`,
+          pitcher: p.pitcher,
+          batter: p.batter,
+          notes: `MLB Statcast公式: ${p.call_description} (${p.speed_mph} mph)`
+        };
+      });
+
+      pitchCounterRef.current = converted.length;
+      setHistory(converted);
+      setLastNotification(`🎉 MLB公式Statcastより ${converted.length} 球の実投球データ（千賀滉大 vs アクーニャJr.等）を同期インポートしました！`);
+      playBeep(880, 'sine');
+    } catch (err: any) {
+      console.error(err);
+      alert('MLB Statcast APIの通信エラーが発生しました: ' + (err.message || err));
+    } finally {
+      setIsImportingStatcast(false);
+    }
+  };
+
   // Keyboard shortcuts for live video tagging (B, S, K, F, H, W, Space)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1051,6 +1108,24 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleImportRealStatcast}
+            disabled={isImportingStatcast}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg cursor-pointer active:scale-95 transition-all"
+            title="MLB公式Statcast APIから、この試合の250球以上の全球種・球速・コース実データを一括インポートします"
+          >
+            {isImportingStatcast ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-spin border-2 border-white border-t-transparent" />
+                <span>📡 Statcast実データ取得中...</span>
+              </>
+            ) : (
+              <>
+                <Radio className="w-3.5 h-3.5 text-sky-300" />
+                <span>📡 MLB公式Statcast 実データ同期 (千賀滉大 vs アクーニャJr.等)</span>
+              </>
+            )}
+          </button>
 
           <button
             onClick={() => {
