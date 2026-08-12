@@ -28,6 +28,9 @@ export interface AiStatPayload {
   end_time?: number;        // 投球完了秒数 (e.g. 139.62)
   pitcher?: string;
   batter?: string;
+  defense?: string;
+  inningStr?: string;
+  countStr?: string;
   camera_view?: 'center' | 'side' | 'broadcast' | string;
   target_course?: string;
   actual_course?: string;
@@ -428,6 +431,13 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     return () => vid.removeEventListener('timeupdate', handleTimeUpdate);
   }, [videoUrl]);
 
+  // Sync playback speed
+  useEffect(() => {
+    if (videoPreviewRef.current) {
+      videoPreviewRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed, videoUrl]);
+
   const currentBatter = currentHalf === 'top'
     ? lineupTop[currentBatterIdxTop] || { order: currentBatterIdxTop + 1, name: `打者${currentBatterIdxTop + 1}` }
     : lineupBottom[currentBatterIdxBottom] || { order: currentBatterIdxBottom + 1, name: `打者${currentBatterIdxBottom + 1}` };
@@ -620,12 +630,23 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const clipStart = Math.max(0, pitchTime - leadInSec);
     const clipEnd = pitchTime + leadOutSec;
 
+    const resolvedPitcher = rawPayload.pitcher || currentPitcher.name || '投手';
+    const resolvedBatter = rawPayload.batter || `${currentBatter.order}番: ${currentBatter.name}`;
+    const resolvedDefense = rawPayload.defense || defense || '-';
+    const currentCountStr = `${balls}-${strikes}`;
+    const currentInningStr = `${currentInning}回${currentHalf === 'top' ? '表' : '裏'}`;
+
     const newStat: AiStatPayload = {
       ...rawPayload,
       pitch_number: nextPitchNum,
       video_timestamp: pitchTime,
       start_time: clipStart,
       end_time: clipEnd,
+      pitcher: resolvedPitcher,
+      batter: resolvedBatter,
+      defense: resolvedDefense,
+      inningStr: currentInningStr,
+      countStr: currentCountStr,
       receivedAt: rawPayload.receivedAt || new Date().toLocaleTimeString(),
       confidence: rawPayload.confidence !== undefined ? rawPayload.confidence : 1.0
     };
@@ -634,10 +655,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     playBeep(880, 'sine');
 
     const resMeta = normalizeResult(newStat.result);
-    const currentCountStr = `${balls}-${strikes}`;
-    
-    const resolvedPitcher = rawPayload.pitcher || currentPitcher.name;
-    const resolvedBatter = rawPayload.batter || `${currentBatter.order}番 ${currentBatter.name}`;
 
     setLastNotification(`⚡ 投球 #${newStat.pitch_number} [${resolvedPitcher} vs ${resolvedBatter}]: ${resMeta.label} (${newStat.pitch_type || selectedPitchType} / ${newStat.ball_speed ? newStat.ball_speed + 'km/h' : '-'}) [${formatSeconds(clipStart)}〜${formatSeconds(clipEnd)}]`);
 
@@ -759,6 +776,11 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       course: selectedCourse,
       target_course: selectedCourse,
       actual_course: selectedCourse,
+      pitcher: currentPitcher.name,
+      batter: `${currentBatter.order}番: ${currentBatter.name}`,
+      defense: defense || '-',
+      inningStr: `${currentInning}回${currentHalf === 'top' ? '表' : '裏'}`,
+      countStr: `${balls}-${strikes}`,
       video_timestamp: pitchTime
     };
 
@@ -1789,14 +1811,25 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                   ⏱️ 現在再生位置: {formatSeconds(currentVideoTime)}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPlaybackSpeed(s => s === 1.0 ? 0.5 : s === 0.5 ? 0.25 : 1.0)}
-                  className="px-2 py-0.5 bg-zinc-850 border border-zinc-750 text-[10px] font-mono text-amber-300 rounded font-bold cursor-pointer"
-                >
-                  速度: {playbackSpeed}x
-                </button>
-                <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[150px]">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[10px] text-zinc-400 font-bold hidden sm:inline">速度:</span>
+                {[0.5, 1.0, 1.25, 1.5, 2.0, 4.0].map(speed => (
+                  <button
+                    key={speed}
+                    onClick={() => {
+                      setPlaybackSpeed(speed);
+                      if (videoPreviewRef.current) videoPreviewRef.current.playbackRate = speed;
+                    }}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold cursor-pointer transition-all ${
+                      playbackSpeed === speed
+                        ? 'bg-amber-500 text-black shadow font-black scale-105'
+                        : 'bg-zinc-850 hover:bg-zinc-750 text-zinc-300 border border-zinc-700'
+                    }`}
+                  >
+                    {speed}x
+                  </button>
+                ))}
+                <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[120px] ml-1">
                   {videoName || '試合動画'}
                 </span>
               </div>
@@ -2126,23 +2159,25 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                     title="全選択 / 全解除"
                   />
                 </th>
-                <th className="py-2 px-2 text-center w-12">#</th>
-                <th className="py-2 px-3 text-center w-28">映像ジャンプ</th>
-                <th className="py-2 px-3 text-center">対戦 (投手 vs 打者)</th>
-                <th className="py-2 px-3 text-center">クリップ範囲</th>
-                <th className="py-2 px-3">判定・結果</th>
-                <th className="py-2 px-3 text-center">球種</th>
-                <th className="py-2 px-3 text-center">球速</th>
-                <th className="py-2 px-3 text-center">コース</th>
-                <th className="py-2 px-3 text-center">記録時刻</th>
-                <th className="py-2 px-3 text-center w-36">修正 / 削除</th>
+                <th className="py-2 px-2 text-center w-10">#</th>
+                <th className="py-2 px-2 text-center w-24">映像ジャンプ</th>
+                <th className="py-2 px-2 text-center">イニング / カウント</th>
+                <th className="py-2 px-2 text-center">投手</th>
+                <th className="py-2 px-2 text-center">打者</th>
+                <th className="py-2 px-2 text-center">守備シフト</th>
+                <th className="py-2 px-2">判定・結果</th>
+                <th className="py-2 px-2 text-center">球種</th>
+                <th className="py-2 px-2 text-center">コース</th>
+                <th className="py-2 px-2 text-center">球速</th>
+                <th className="py-2 px-2 text-center">クリップ範囲</th>
+                <th className="py-2 px-2 text-center w-36">修正 / 削除</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-850/80 bg-zinc-950/60 font-mono">
               {history.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-zinc-600 font-sans">
-                    まだ投球データが記録されていません。動画を再生しながら打刻ボタン（または B/S/K/F/H キー）を押すか、「⚡ 高速一括自動タグ付け」を実行してください。
+                  <td colSpan={13} className="py-8 text-center text-zinc-600 font-sans">
+                    まだ投球データが記録されていません。動画を再生しながら打刻ボタン（または B/S/K/F/H キー）を押してください。
                   </td>
                 </tr>
               ) : (
@@ -2172,14 +2207,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                       <td className="py-2.5 px-2 text-center font-bold text-zinc-400">
                         #{item.pitch_number}
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2.5 px-2 text-center">
                         {item.video_timestamp !== undefined ? (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               seekAndPlayVideo(item.video_timestamp!, item.pitch_number);
                             }}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] mx-auto cursor-pointer active:scale-95"
+                            className="flex items-center gap-1 px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] mx-auto cursor-pointer active:scale-95"
                           >
                             <Play className="w-2.5 h-2.5 fill-emerald-400" />
                             <span>{formatSeconds(item.video_timestamp)}</span>
@@ -2188,13 +2223,21 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                           <span className="text-zinc-600 text-[10px]">-</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-center font-sans text-zinc-300 text-xs">
-                        {item.pitcher || '投手'} vs {item.batter || '打者'}
+                      <td className="py-2.5 px-2 text-center font-sans text-zinc-300 text-xs">
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-850 border border-zinc-750 text-[10px] text-amber-300 font-bold font-mono">
+                          {item.inningStr || `${currentInning}回${currentHalf === 'top' ? '表' : '裏'}`} ({item.countStr || '0-0'})
+                        </span>
                       </td>
-                      <td className="py-2.5 px-3 text-center text-[10px] text-zinc-400">
-                        {formatSeconds(startTime)} 〜 {formatSeconds(endTime)}
+                      <td className="py-2.5 px-2 text-center font-sans font-bold text-zinc-100 text-xs">
+                        {item.pitcher || currentPitcher.name || '投手'}
                       </td>
-                      <td className="py-2.5 px-3 font-sans">
+                      <td className="py-2.5 px-2 text-center font-sans font-bold text-sky-300 text-xs">
+                        {item.batter || `${currentBatter.order}番: ${currentBatter.name}`}
+                      </td>
+                      <td className="py-2.5 px-2 text-center font-sans text-zinc-400 text-xs">
+                        {item.defense || defense || '-'}
+                      </td>
+                      <td className="py-2.5 px-2 font-sans">
                         <span className={`px-2 py-0.5 rounded text-[11px] font-black ${res.badge}`}>
                           {res.label}
                         </span>
@@ -2204,19 +2247,19 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-center font-sans font-bold text-sky-300">
+                      <td className="py-2.5 px-2 text-center font-sans font-bold text-sky-300 text-xs">
                         {item.pitch_type || '4シーム'}
                       </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-amber-400">
-                        {item.ball_speed ? `${item.ball_speed}km` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-sans text-zinc-300">
+                      <td className="py-2.5 px-2 text-center font-sans text-zinc-300 text-xs">
                         {item.course || item.actual_course || '-'}
                       </td>
-                      <td className="py-2.5 px-3 text-center text-zinc-500 text-[10px]">
-                        {item.receivedAt}
+                      <td className="py-2.5 px-2 text-center font-bold text-amber-400 text-xs">
+                        {item.ball_speed ? `${item.ball_speed}km` : '-'}
                       </td>
-                      <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-2.5 px-2 text-center text-[10px] text-zinc-400">
+                        {formatSeconds(startTime)} 〜 {formatSeconds(endTime)}
+                      </td>
+                      <td className="py-2.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => handleOverridePitch(item.pitch_number!, 'LookingStrike')}
