@@ -8,7 +8,7 @@ import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { OrganizerView } from './components/OrganizerView';
 import { MatrixView } from './components/MatrixView';
 import { MatrixPlayerModal } from './components/MatrixPlayerModal';
-import { supabase } from './lib/supabase';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { EventTimeline } from './components/EventTimeline';
 import { getMittDisplacementAtCatch } from './utils/baseballMittTracker';
 import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users, Eye, EyeOff } from 'lucide-react';
@@ -1476,6 +1476,11 @@ function App() {
     const trimmedId = inputUserId.trim();
     if (!trimmedId) {
       setLoginError('ユーザーIDを入力してください');
+      return;
+    }
+
+    if (!supabase) {
+      setLoginError('⚠️ データベース接続（Supabase）が未設定です。環境変数をご確認ください。');
       return;
     }
 
@@ -4771,6 +4776,15 @@ function App() {
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-bold font-mono"
               />
             </div>
+
+            {!isSupabaseConfigured && (
+              <div className="bg-rose-950/90 border border-rose-600/90 p-2.5 rounded-xl text-[11px] text-rose-200 font-bold flex flex-col gap-1 text-center shadow-lg">
+                <span>⚠️ データベース接続（Supabase）が未設定です</span>
+                <span className="text-[10px] text-rose-300 font-normal">
+                  環境変数 (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) の設定をご確認ください
+                </span>
+              </div>
+            )}
 
             {loginError && (
               <p className="text-[10px] text-rose-500 font-bold text-center bg-rose-950/20 p-2.5 rounded-xl border border-rose-900/30">

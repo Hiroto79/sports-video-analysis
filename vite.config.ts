@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -60,8 +60,8 @@ function aiStatReceiverPlugin(): Plugin {
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({
-                status: 'ok',
-                message: 'Stat successfully delivered to Web browser UI',
+                status: 'success',
+                message: 'Data broadcasted to web clients',
                 activeClients: clients.size,
                 received: data
               }));
@@ -81,9 +81,23 @@ function aiStatReceiverPlugin(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: './',
-  plugins: [react(), tailwindcss(), aiStatReceiverPlugin()],
-})
+export default defineConfig(({ mode, command }) => {
+  const env = loadEnv(mode, process.cwd(), '');
 
+  if (command === 'build') {
+    const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const supabaseKey = env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn(
+        '\n⚠️ [Vite Build Warning] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing in build environment!\n' +
+        'Please ensure these environment variables are set in your Vercel Project Settings -> Environment Variables.\n'
+      );
+    }
+  }
+
+  return {
+    base: './',
+    plugins: [react(), tailwindcss(), aiStatReceiverPlugin()],
+  };
+});
