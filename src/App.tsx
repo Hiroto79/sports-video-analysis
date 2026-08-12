@@ -5376,7 +5376,7 @@ function App() {
       {/* 1. SHARED PERSISTENT VIDEO CONTAINER (Never unmounted, prevents black screen/reset bugs) */}
       {videoUrl && (
         <div 
-          style={{ display: currentView === 'analytics' || currentView === 'matrix' ? 'none' : 'block' }}
+          style={{ display: currentView === 'analytics' || currentView === 'matrix' || currentView === 'live_tagger' || currentView === 'ai_receiver' ? 'none' : 'block' }}
           className={`shrink-0 w-full transition-all duration-300 ${
             currentView === 'organizer' && activeOrganizerTab === 'grid'
               ? 'sticky top-[52px] z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 shadow-xl max-w-full px-4 py-3'

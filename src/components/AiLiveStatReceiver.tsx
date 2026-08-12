@@ -102,7 +102,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   });
 
   return (
-    <div ref={containerRef} className={`relative flex-1 min-w-0 ${className}`}>
+    <div ref={containerRef} className={`relative flex-1 min-w-0 ${isOpen ? 'z-[9999]' : 'z-10'} ${className}`}>
       <div 
         onClick={() => {
           if (!disabled) {
@@ -132,7 +132,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         <span className="text-[7px] text-zinc-500 select-none shrink-0 ml-1">▼</span>
       </div>
       {isOpen && !disabled && (
-        <div className="absolute z-[1100] top-8 left-0 right-0 max-h-48 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded shadow-2xl p-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100">
+        <div className="absolute z-[9999] top-8 left-0 right-0 max-h-56 min-w-[130px] overflow-y-auto bg-zinc-950 border border-zinc-700 rounded-xl shadow-2xl p-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100 ring-1 ring-zinc-750">
           <div
             onClick={() => {
               onChange('');
@@ -1227,9 +1227,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
       {/* 2.5 📋 TEAM LINEUP & DEFENSE ROSTER SETTINGS PANEL (打順一覧入力 ＆ 守備設定交代) */}
       {isLineupDefenseOpen && (
-        <div className="glass-panel rounded-2xl border border-zinc-800/90 bg-zinc-950/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="glass-panel rounded-2xl border border-zinc-800/90 bg-zinc-950/90 shadow-xl overflow-visible relative z-30 animate-in fade-in slide-in-from-top-2 duration-200">
           {/* Header Bar with Tab Switches */}
-          <div className="px-4 py-2.5 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between flex-wrap gap-2">
+          <div className="px-4 py-2.5 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between flex-wrap gap-2 rounded-t-2xl">
             <div className="flex items-center gap-2">
               <span className="text-xs font-black text-white flex items-center gap-1.5">
                 📋 打順・守備スタメン設定
@@ -1268,15 +1268,15 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           </div>
 
           {/* Content Body */}
-          <div className="p-3 bg-zinc-950/60">
+          <div className="p-3 bg-zinc-950/60 overflow-visible relative rounded-b-2xl">
             {lineupTab === 'lineup' ? (
               /* TAB 1: 1〜9番 打順一覧テーブル */
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-2.5 overflow-visible">
                 <div className="flex items-center justify-between text-[11px] text-zinc-400 px-1">
                   <span>{battingTeam} の打順一覧（ドロップダウンで選手を選択すると、打順が全機能へ即座に反映・保存されます）</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-2 overflow-visible">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((orderNum) => {
                     const assignedPlayer = battingPlayers.find(p => Number(p.battingOrder) === orderNum);
                     const isActive = currentBatter.order === orderNum;
@@ -1284,7 +1284,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                     return (
                       <div
                         key={orderNum}
-                        className={`p-2.5 rounded-xl border flex flex-col gap-1.5 transition-all ${
+                        className={`p-2.5 rounded-xl border flex flex-col gap-1.5 transition-all overflow-visible relative ${
                           isActive
                             ? 'bg-sky-950/60 border-sky-500 shadow-[0_0_12px_rgba(14,165,233,0.3)] ring-1 ring-sky-500/50'
                             : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700'
@@ -1361,7 +1361,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               </div>
             ) : (
               /* TAB 2: 🛡️ 守備位置設定 (コードウィンドウ方式) */
-              <div className="flex flex-col gap-2.5 select-none">
+              <div className="flex flex-col gap-2.5 select-none overflow-visible">
                 <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 pb-0.5">
                   🛡️ 守備設定交代 [守: {defendingTeam}]（各ポジションごとに守備選手と打順を設定）
                 </div>
