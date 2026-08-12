@@ -19,6 +19,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAiStatReceived: (callback) => ipcRenderer.on('ai-stat-received', (_event, data) => callback(data)),
   removeAiStatListener: () => ipcRenderer.removeAllListeners('ai-stat-received'),
 
+  // AI Baseball Engine execution
+  runBaseballAi: (params) => ipcRenderer.invoke('run-baseball-ai', params),
+  onBaseballAiProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('baseball-ai-progress', handler);
+    return () => ipcRenderer.removeListener('baseball-ai-progress', handler);
+  },
+
   // Cleanup listeners
   removeAllUpdateListeners: () => {
     ipcRenderer.removeAllListeners('update-available');
@@ -27,5 +35,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('update-downloaded');
     ipcRenderer.removeAllListeners('update-error');
     ipcRenderer.removeAllListeners('ai-stat-received');
+    ipcRenderer.removeAllListeners('baseball-ai-progress');
   }
 });

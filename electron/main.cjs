@@ -246,10 +246,51 @@ function startLocalReceiverServer() {
     }
   });
 
-  localServer.listen(HTTP_PORT, '0.0.0.0', () => {
+    localServer.listen(HTTP_PORT, '0.0.0.0', () => {
     console.log(`🚀 [AI Receiver] Local HTTP receiver server listening at http://0.0.0.0:${HTTP_PORT}/api/add-stat`);
   });
 }
+
+// IPC: Run Local Python AI Baseball Video Pipeline
+ipcMain.handle('run-baseball-ai', async (event, { videoPath, leadIn = 4.0, leadOut = 3.0 }) => {
+  const { spawn } = require('child_process');
+  const pythonPath = path.join(__dirname, '..', '.venv', 'bin', 'python');
+  const scriptPath = path.join(__dirname, '..', 'scripts', 'baseball_ai_engine.py');
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(pythonPath, [scriptPath, videoPath], {
+      env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    });
+    let finalResult = null;
+
+    proc.stdout.on('data', (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line.trim());
+          if (parsed.type === 'progress') {
+            event.sender.send('baseball-ai-progress', parsed);
+          } else if (parsed.type === 'completed') {
+            finalResult = parsed;
+          }
+        } catch (_) {}
+      }
+    });
+
+    proc.stderr.on('data', (data) => {
+      console.error('AI process stderr:', data.toString());
+    });
+
+    proc.on('close', (code) => {
+      if (finalResult) {
+        resolve(finalResult);
+      } else {
+        reject(new Error(`AI process exited with code ${code}`));
+      }
+    });
+  });
+});
 
 // App Ready Lifecycle
 app.whenReady().then(() => {

@@ -31,3 +31,5 @@ release_output/*
 *.dmg
 *.zip
 *.blockmap
+.venv
+*.pt

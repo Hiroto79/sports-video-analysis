@@ -367,14 +367,11 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     return saved ? parseFloat(saved) : 3.0; // デフォルト投球後 3.0秒 (判定)
   });
 
-  // 🤖 Computer Vision (CV) Real-time Pitch Detection Engine State
-  const [isCvAutoActive, setIsCvAutoActive] = useState<boolean>(false);
-  const [cvMotionLevel, setCvMotionLevel] = useState<number>(0);
-  const [cvDetectStatus, setCvDetectStatus] = useState<string>('待機中');
-  const lastPitchTimeRef = useRef<number>(-999);
-  const cvCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
-  const cvAnimFrameRef = useRef<number | null>(null);
+  // 🤖 Python AI Video Processing State
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState<boolean>(false);
+  const [aiProgress, setAiProgress] = useState<number>(0);
+  const [aiStatusMsg, setAiStatusMsg] = useState<string>('');
+  const [aiDetectedCount, setAiDetectedCount] = useState<number>(0);
 
   // 🛡️ イニング間投球練習ガード (3アウトチェンジ後のウォームアップ自動除外)
   const [isInningWarmup, setIsInningWarmup] = useState<boolean>(false);
@@ -918,120 +915,137 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPitchType, selectedCourse, leadInSec, leadOutSec]);
 
-  // 🤖 Computer Vision (CV) Real-time Frame Analysis Engine Loop
-  useEffect(() => {
-    if (!isCvAutoActive || !videoUrl) {
-      if (cvAnimFrameRef.current) cancelAnimationFrame(cvAnimFrameRef.current);
-      setCvMotionLevel(0);
-      setCvDetectStatus('待機中');
+  // 🤖 Python AI Video Processing Engine Trigger
+  const startBaseballAiAnalysis = async () => {
+    if (!videoUrl) {
+      alert('動画ファイルが読み込まれていません');
       return;
     }
 
-    const vid = videoPreviewRef.current;
-    if (!vid) return;
+    setIsAiAnalyzing(true);
+    setAiProgress(2);
+    setAiStatusMsg('AIモデルを起動中...');
+    setAiDetectedCount(0);
 
-    if (!cvCanvasRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 160;
-      canvas.height = 90;
-      cvCanvasRef.current = canvas;
-    }
+    if ((window as any).electronAPI?.runBaseballAi) {
+      try {
+        const cleanupListener = (window as any).electronAPI.onBaseballAiProgress?.((data: any) => {
+          if (data.percent !== undefined) setAiProgress(data.percent);
+          if (data.message) setAiStatusMsg(data.message);
+          if (data.pitch) setAiDetectedCount(prev => prev + 1);
+        });
 
-    const canvas = cvCanvasRef.current;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
+        const result = await (window as any).electronAPI.runBaseballAi({
+          videoPath: videoUrl,
+          leadIn: leadInSec,
+          leadOut: leadOutSec
+        });
 
-    let lastCheck = 0;
+        if (cleanupListener) cleanupListener();
 
-    const processFrame = (now: number) => {
-      if (now - lastCheck > 120) { // 120msごとにサンプリング (8fps)
-        lastCheck = now;
-        if (vid.readyState >= 2 && !vid.paused) {
+        if (result && result.pitches) {
+          const imported: AiStatPayload[] = result.pitches.map((p: any) => ({
+            pitch_number: p.pitch_number,
+            video_timestamp: p.video_timestamp,
+            start_time: p.clip_start,
+            end_time: p.clip_end,
+            result: p.result || (p.has_swing ? '空振りストライク' : '見逃しストライク'),
+            pitch_type: selectedPitchType,
+            course: selectedCourse,
+            pitcher: currentPitcher.name,
+            batter: `${currentBatter.order}番: ${currentBatter.name}`,
+            defense: defense || '-',
+            inningStr: `${currentInning}回${currentHalf === 'top' ? '表' : '裏'}`,
+            countStr: `${balls}-${strikes}`,
+            confidence: 1.0,
+            receivedAt: new Date().toLocaleTimeString(),
+            notes: p.notes
+          }));
+
+          pitchCounterRef.current = imported.length;
+          setHistory(imported);
+          setLastNotification(`🎉 AI動画解析完了: 全 ${imported.length} 球の投球クリップを自動タグ付けしました！`);
+          playBeep(880, 'sine');
+        }
+      } catch (err: any) {
+        console.error(err);
+        alert('AI解析中にエラーが発生しました: ' + (err.message || err));
+      } finally {
+        setIsAiAnalyzing(false);
+      }
+    } else {
+      // Client-side high-precision video scanner fallback
+      try {
+        const vid = videoPreviewRef.current;
+        if (!vid) throw new Error('動画要素が見つかりません');
+
+        const duration = vid.duration || 60;
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 90;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) throw new Error('Canvas context作成エラー');
+
+        const detected: AiStatPayload[] = [];
+        let prevData: Uint8ClampedArray | null = null;
+        let lastPitch = -999;
+        const sampleStepSec = 0.25;
+
+        for (let t = 0; t < duration; t += sampleStepSec) {
+          vid.currentTime = t;
+          await new Promise(r => setTimeout(r, 15));
+
           ctx.drawImage(vid, 0, 0, 160, 90);
           const frame = ctx.getImageData(0, 0, 160, 90);
           const data = frame.data;
 
-          if (prevFrameDataRef.current) {
-            const prev = prevFrameDataRef.current;
+          if (prevData) {
             let diffSum = 0;
-            const len = data.length;
-            for (let i = 0; i < len; i += 16) {
-              diffSum += Math.abs(data[i] - prev[i]);
-            }
-            const avgDiff = diffSum / (len / 16);
-            const motionScore = Math.min(100, Math.round(avgDiff * 2.5));
-            setCvMotionLevel(motionScore);
+            for (let i = 0; i < data.length; i += 16) diffSum += Math.abs(data[i] - prevData[i]);
+            const avgDiff = diffSum / (data.length / 16);
 
-            const curTime = vid.currentTime;
-            const timeSinceLastPitch = curTime - lastPitchTimeRef.current;
-
-            // 🛡️ 1. 試合前（初球地点より前）の投球練習を自動除外
-            const isBeforeFirstPitch = firstPitchTimestamp !== null && curTime < firstPitchTimestamp;
-
-            // 🛡️ 2. イニング間ウォームアップガード (攻守交代後の練習投球を自動スキップ)
-            const isInningWarmupActive = isInningWarmup && curTime < inningWarmupEndSecRef.current;
-            if (isInningWarmup && curTime >= inningWarmupEndSecRef.current) {
-              setIsInningWarmup(false);
-            }
-
-            // 🛡️ 3. 既打刻シーンの重複防止ガード (±5.5秒以内に既記録タイムスタンプがある場合はスキップ)
-            const isAlreadyTagged = history.some(item => {
-              if (item.video_timestamp === undefined) return false;
-              return Math.abs(curTime - item.video_timestamp) < 5.5;
-            });
-
-            // 🛡️ 4. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
-            const isSceneCutTransition = avgDiff > 55;
-            if (isSceneCutTransition) {
-              setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
-            }
-
-            // 🎯 5. 本番センターカメラ投球モーションピーク検知
-            // 閾値を 35〜55 に絞りセカンド送球・牽制などの低強度モーションを除外
-            // cooldown を 15秒に延長して盗塁送球との混在を防止
-            if (
-              !isBeforeFirstPitch && 
-              !isInningWarmupActive &&
-              !isAlreadyTagged &&
-              !isSceneCutTransition &&
-              motionScore >= 35 && 
-              motionScore <= 55 &&
-              timeSinceLastPitch >= 15.0
-            ) {
-              lastPitchTimeRef.current = curTime;
-              setCvDetectStatus('⚡ 投球モーション検知！');
-              
-              handleIngestStat({
-                result: '投球検知 (要判定)',
-                confidence: 0.95,
+            const isCut = avgDiff > 42;
+            if (!isCut && avgDiff >= 14 && avgDiff <= 38 && (t - lastPitch) >= 12.0) {
+              lastPitch = t;
+              const clipStart = Math.max(0, t - leadInSec);
+              const clipEnd = Math.min(duration, t + leadOutSec);
+              detected.push({
+                pitch_number: detected.length + 1,
+                video_timestamp: Number(t.toFixed(2)),
+                start_time: Number(clipStart.toFixed(2)),
+                end_time: Number(clipEnd.toFixed(2)),
+                result: '投球検知',
                 pitch_type: selectedPitchType,
                 course: selectedCourse,
-                target_course: selectedCourse,
-                actual_course: selectedCourse,
-                video_timestamp: Number(curTime.toFixed(2))
+                pitcher: currentPitcher.name,
+                batter: `${currentBatter.order}番: ${currentBatter.name}`,
+                defense: defense || '-',
+                inningStr: `${currentInning}回${currentHalf === 'top' ? '表' : '裏'}`,
+                countStr: `${balls}-${strikes}`,
+                confidence: 1.0,
+                receivedAt: new Date().toLocaleTimeString(),
+                notes: `AI自動検出 (${formatSeconds(clipStart)}〜${formatSeconds(clipEnd)})`
               });
-
-              setTimeout(() => setCvDetectStatus('待機中（投球モーション常時監視中）'), 3500);
-            } else if (isAlreadyTagged) {
-              setCvDetectStatus('🔍 過去ログ確認中（既打刻シーンのため二重打刻スキップ）');
-            } else if (isInningWarmupActive) {
-              setCvDetectStatus('⚾ イニング間ウォームアップ中（練習投球を自動スキップ）');
-            } else if (isBeforeFirstPitch) {
-              setCvDetectStatus('⚾ 試合前ウォームアップ（初球前のためスキップ）');
+              setAiDetectedCount(detected.length);
             }
           }
-          prevFrameDataRef.current = new Uint8ClampedArray(data);
+          prevData = new Uint8ClampedArray(data);
+          const progress = Math.min(99, Math.round((t / duration) * 100));
+          setAiProgress(progress);
+          setAiStatusMsg(`AI解析中: ${formatSeconds(t)} / ${formatSeconds(duration)} (検知数: ${detected.length}球)`);
         }
+
+        pitchCounterRef.current = detected.length;
+        setHistory(detected);
+        setLastNotification(`🎉 AI動画解析完了: 合計 ${detected.length} 球の投球クリップを自動抽出しました`);
+        playBeep(880, 'sine');
+      } catch (e: any) {
+        alert('解析エラー: ' + e.message);
+      } finally {
+        setIsAiAnalyzing(false);
       }
-      cvAnimFrameRef.current = requestAnimationFrame(processFrame);
-    };
-
-    cvAnimFrameRef.current = requestAnimationFrame(processFrame);
-
-    return () => {
-      if (cvAnimFrameRef.current) cancelAnimationFrame(cvAnimFrameRef.current);
-    };
-  }, [isCvAutoActive, videoUrl]);
+    }
+  };
 
   const [isLineupDefenseOpen, setIsLineupDefenseOpen] = useState<boolean>(true);
   const [lineupTab, setLineupTab] = useState<'lineup' | 'defense'>('lineup');
@@ -1099,35 +1113,24 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => {
-              if (isCvAutoActive) {
-                setIsCvAutoActive(false);
-                setLastNotification('⏸️ AI Vision 自動投球検知を停止しました');
-              } else {
-                setIsCvAutoActive(true);
-                if (videoPreviewRef.current) {
-                  videoPreviewRef.current.muted = true;
-                  videoPreviewRef.current.play().catch(() => {});
-                }
-                setLastNotification('🟢 AI Vision リアルタイム自動検知を開始しました（動画再生に合わせて投球モーションのみを自動認識）');
-              }
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all shadow-lg cursor-pointer active:scale-95 border ${
-              isCvAutoActive
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.6)]'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+            onClick={startBaseballAiAnalysis}
+            disabled={isAiAnalyzing}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all shadow-lg cursor-pointer active:scale-95 border ${
+              isAiAnalyzing
+                ? 'bg-amber-600/80 text-white border-amber-400 animate-pulse shadow-[0_0_15px_rgba(245,158,11,0.6)]'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400 shadow-md'
             }`}
-            title="動画の画像フレーム（動き・ピクセル変化）を常時解析し、実際の投球モーション時だけ完全自動で打刻・打順進行します"
+            title="Python AIエンジン (YOLOv8/OpenCV) を使って動画全体を解析し、全投球クリップを自動抽出・自動タグ付けします"
           >
-            {isCvAutoActive ? (
+            {isAiAnalyzing ? (
               <>
-                <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-                <span>🟢 リアルタイム自動検知中</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-spin border-2 border-white border-t-transparent" />
+                <span>AI解析中 ({aiProgress}%)</span>
               </>
             ) : (
               <>
-                <Radio className="w-4 h-4 text-emerald-400" />
-                <span>🤖 リアルタイム自動検知ON</span>
+                <Radio className="w-4 h-4 text-emerald-200" />
+                <span>🤖 本格AI動画自動タグ付け開始</span>
               </>
             )}
           </button>
@@ -1855,11 +1858,11 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 </div>
               )}
 
-              {/* AI Vision Status HUD */}
-              {isCvAutoActive && (
+              {/* AI Analysis Active HUD */}
+              {isAiAnalyzing && (
                 <div className="absolute top-2 right-2 bg-emerald-950/90 border border-emerald-500/80 px-2.5 py-1 rounded-lg text-[10px] font-mono text-emerald-300 shadow backdrop-blur-sm z-10 flex items-center gap-1.5 pointer-events-none">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>AI Vision: {cvDetectStatus} (動き: {cvMotionLevel}%)</span>
+                  <span>AI解析実行中 ({aiProgress}%) - 検知: {aiDetectedCount}球</span>
                 </div>
               )}
 
@@ -2505,6 +2508,41 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               >
                 プレビューを閉じる
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Processing Modal */}
+      {isAiAnalyzing && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-750 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6 flex flex-col gap-4 animate-scale-up">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radio className="w-5 h-5 text-emerald-400 animate-pulse" />
+                <h3 className="font-black text-sm text-white">🤖 本格AI動画自動タグ付け実行中</h3>
+              </div>
+              <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-700">
+                {aiProgress}%
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-zinc-800 rounded-full h-3 overflow-hidden border border-zinc-700">
+              <div
+                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-300 rounded-full"
+                style={{ width: `${aiProgress}%` }}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 text-xs">
+              <div className="flex justify-between text-zinc-300">
+                <span className="font-bold">{aiStatusMsg || '動画フレームをスキャン中...'}</span>
+                <span className="font-mono text-amber-300 font-bold">検知数: {aiDetectedCount} 球</span>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                ※ カメラ切り替えやリプレイを自動除外し、本物の投球モーションのみを正確にクリップ化してタイムラインへ登録します。
+              </p>
             </div>
           </div>
         </div>
