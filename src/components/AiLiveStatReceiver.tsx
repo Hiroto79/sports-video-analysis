@@ -226,6 +226,10 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
   const cvAnimFrameRef = useRef<number | null>(null);
 
+  // 🛡️ イニング間投球練習ガード (3アウトチェンジ後のウォームアップ自動除外)
+  const [isInningWarmup, setIsInningWarmup] = useState<boolean>(false);
+  const inningWarmupEndSecRef = useRef<number>(0);
+
   // Video Preview Player state
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
@@ -399,20 +403,31 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setStrikes(0);
     setOuts(0);
 
+    // 🛡️ 3アウトチェンジ時、イニング間の投球練習を自動除外するガードを発動 (60秒間または次の回開始まで)
+    const curTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
+    inningWarmupEndSecRef.current = curTime + 65; // 次の回の初球まで通常約60秒の練習時間
+    setIsInningWarmup(true);
+
     if (currentHalf === 'top') {
       const nextHalf = 'bottom';
       setCurrentHalf(nextHalf);
       onUpdateInning?.(currentInning, nextHalf);
-      setLastNotification(`🔄 ${currentInning}回裏に攻守交代（守備投手: ${pitchersTeamA[activePitcherIdxA]?.name} vs 打者: ${lineupBottom[currentBatterIdxBottom]?.name}）`);
+      setLastNotification(`🔄 ${currentInning}回裏に攻守交代（投球練習スキップ中: 守備投手 ${pitchersTeamA[activePitcherIdxA]?.name} vs 打者 ${lineupBottom[currentBatterIdxBottom]?.name}）`);
     } else {
       const nextInning = currentInning + 1;
       const nextHalf = 'top';
       setCurrentInning(nextInning);
       setCurrentHalf(nextHalf);
       onUpdateInning?.(nextInning, nextHalf);
-      setLastNotification(`🔄 ${nextInning}回表に攻守交代（守備投手: ${pitchersTeamB[activePitcherIdxB]?.name} vs 打者: ${lineupTop[currentBatterIdxTop]?.name}）`);
+      setLastNotification(`🔄 ${nextInning}回表に攻守交代（投球練習スキップ中: 守備投手 ${pitchersTeamB[activePitcherIdxB]?.name} vs 打者 ${lineupTop[currentBatterIdxTop]?.name}）`);
     }
     playBeep(600, 'triangle');
+  };
+
+  const endInningWarmup = () => {
+    setIsInningWarmup(false);
+    inningWarmupEndSecRef.current = 0;
+    setLastNotification('▶️ イニング間練習終了 → 本番投球検知を再開しました');
   };
 
   const resetCount = () => {
@@ -711,15 +726,22 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             // 🛡️ 1. 試合前（初球地点より前）の投球練習を自動除外
             const isBeforeFirstPitch = firstPitchTimestamp !== null && curTime < firstPitchTimestamp;
 
-            // 🛡️ 2. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
+            // 🛡️ 2. イニング間ウォームアップガード (攻守交代後の練習投球を自動スキップ)
+            const isInningWarmupActive = isInningWarmup && curTime < inningWarmupEndSecRef.current;
+            if (isInningWarmup && curTime >= inningWarmupEndSecRef.current) {
+              setIsInningWarmup(false);
+            }
+
+            // 🛡️ 3. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
             const isSceneCutTransition = avgDiff > 55; // 画面全体の激変は中継ワイプ/アングル切り替え
             if (isSceneCutTransition) {
               setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
             }
 
-            // 🎯 3. 本番センターカメラ投球モーションピーク検知 (マウンド/ホーム領域の動き適正範囲 & 物理的投球間隔10.5秒以上 & 試合開始後 & 非リプレイ)
+            // 🎯 4. 本番センターカメラ投球モーションピーク検知 (マウンド/ホーム領域の動き適正範囲 & 物理的投球間隔10.5秒以上 & 試合開始後 & 非イニング練習 & 非リプレイ)
             if (
               !isBeforeFirstPitch && 
+              !isInningWarmupActive &&
               !isSceneCutTransition &&
               motionScore >= 28 && 
               motionScore <= 60 && // リプレイの激しいカメラワークやワイプ（>60）を除外
@@ -749,6 +771,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               });
 
               setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ監視中）'), 3500);
+            } else if (isInningWarmupActive) {
+              setCvDetectStatus('⚾ イニング間ウォームアップ中（練習投球を自動スキップ）');
             } else if (isBeforeFirstPitch) {
               setCvDetectStatus('⚾ 試合前ウォームアップ（初球前のためスキップ）');
             }
@@ -1162,6 +1186,22 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 <div className="absolute top-2 right-2 bg-emerald-950/90 border border-emerald-500/80 px-2.5 py-1 rounded-lg text-[10px] font-mono text-emerald-300 shadow backdrop-blur-sm z-10 flex items-center gap-1.5 pointer-events-none">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                   <span>AI Vision: {cvDetectStatus} (動き: {cvMotionLevel}%)</span>
+                </div>
+              )}
+
+              {/* Inning Warmup Skip Active Badge & Quick Resume Button */}
+              {isInningWarmup && (
+                <div className="absolute bottom-4 left-4 right-4 bg-amber-950/95 border border-amber-500/80 p-2.5 rounded-xl text-amber-200 shadow-2xl backdrop-blur-md z-20 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    <span className="text-base">⚾</span>
+                    <span>イニング間ウォームアップ中（投手の練習球は自動でスキップされます）</span>
+                  </div>
+                  <button
+                    onClick={endInningWarmup}
+                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow cursor-pointer active:scale-95"
+                  >
+                    ▶️ プレイ再開（本番検知へ）
+                  </button>
                 </div>
               )}
 
