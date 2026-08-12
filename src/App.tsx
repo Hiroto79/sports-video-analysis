@@ -5712,6 +5712,53 @@ function App() {
           teamBName={teamBName || '後攻チーム'}
           initialPitcherA={pitcherA || '投手A'}
           initialPitcherB={pitcherB || '投手B'}
+          pitcherA={pitcherA}
+          pitcherB={pitcherB}
+          onUpdatePitcherA={(val) => {
+            setPitcherA(val);
+            channelRef.current?.postMessage({ type: 'UPDATE_PITCHER_A', value: val });
+          }}
+          onUpdatePitcherB={(val) => {
+            setPitcherB(val);
+            channelRef.current?.postMessage({ type: 'UPDATE_PITCHER_B', value: val });
+          }}
+          defense={inningHalf === 'top' ? defenseB : defenseA}
+          onUpdateDefense={(val) => {
+            if (inningHalf === 'top') {
+              setDefenseB(val);
+              channelRef.current?.postMessage({ type: 'UPDATE_DEFENSE_B', value: val });
+            } else {
+              setDefenseA(val);
+              channelRef.current?.postMessage({ type: 'UPDATE_DEFENSE_A', value: val });
+            }
+          }}
+          catcherId={inningHalf === 'top' ? catcherIdB : catcherIdA}
+          onUpdateCatcherId={id => inningHalf === 'top' ? setCatcherIdB(id) : setCatcherIdA(id)}
+          inf1Id={inningHalf === 'top' ? inf1IdB : inf1IdA}
+          onUpdateInf1Id={id => inningHalf === 'top' ? setInf1IdB(id) : setInf1IdA(id)}
+          inf2Id={inningHalf === 'top' ? inf2IdB : inf2IdA}
+          onUpdateInf2Id={id => inningHalf === 'top' ? setInf2IdB(id) : setInf2IdA(id)}
+          inf3Id={inningHalf === 'top' ? inf3IdB : inf3IdA}
+          onUpdateInf3Id={id => inningHalf === 'top' ? setInf3IdB(id) : setInf3IdA(id)}
+          inf4Id={inningHalf === 'top' ? inf4IdB : inf4IdA}
+          onUpdateInf4Id={id => inningHalf === 'top' ? setInf4IdB(id) : setInf4IdA(id)}
+          lfId={inningHalf === 'top' ? lfIdB : lfIdA}
+          onUpdateLfId={id => inningHalf === 'top' ? setLfIdB(id) : setLfIdA(id)}
+          cfId={inningHalf === 'top' ? cfIdB : cfIdA}
+          onUpdateCfId={id => inningHalf === 'top' ? setCfIdB(id) : setCfIdA(id)}
+          rfId={inningHalf === 'top' ? rfIdB : rfIdA}
+          onUpdateRfId={id => inningHalf === 'top' ? setRfIdB(id) : setRfIdA(id)}
+          dhId={inningHalf === 'top' ? dhIdB : dhIdA}
+          onUpdateDhId={id => inningHalf === 'top' ? setDhIdB(id) : setDhIdA(id)}
+          onUpdatePlayerBattingOrder={handleUpdatePlayerBattingOrder}
+          onUpdatePlayerHand={handleUpdatePlayerHand}
+          onUpdatePlayerThrows={handleUpdatePlayerThrows}
+          onUpdatePlayerBats={handleUpdatePlayerBats}
+          activePlayerId={activePlayerId}
+          onSelectPlayer={(id) => {
+            setActivePlayerId(id);
+            channelRef.current?.postMessage({ type: 'UPDATE_ACTIVE_PLAYER', activePlayerId: id });
+          }}
           currentTime={currentTime}
           inningNum={inningNum}
           inningHalf={inningHalf}

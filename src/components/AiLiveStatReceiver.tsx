@@ -52,6 +52,121 @@ export interface PitcherEntry {
   number?: string;
 }
 
+interface SearchableSelectProps {
+  value: string;
+  options: { id: string; name: string; number?: string }[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  returnId?: boolean;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  value,
+  options,
+  onChange,
+  placeholder = '未選択',
+  disabled = false,
+  className = '',
+  returnId = true
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedOption = options.find(opt => opt.id === value || opt.name === value);
+  const displayText = selectedOption 
+    ? `${selectedOption.number ? '#' + selectedOption.number + ' ' : ''}${selectedOption.name}`
+    : value || '';
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) setSearch('');
+  }, [isOpen]);
+
+  const filteredOptions = options.filter(opt => {
+    const searchStr = search.toLowerCase();
+    const nameMatch = opt.name.toLowerCase().includes(searchStr);
+    const numMatch = opt.number ? opt.number.toLowerCase().includes(searchStr) : false;
+    return nameMatch || numMatch;
+  });
+
+  return (
+    <div ref={containerRef} className={`relative flex-1 min-w-0 ${className}`}>
+      <div 
+        onClick={() => {
+          if (!disabled) {
+            setIsOpen(!isOpen);
+            setSearch('');
+          }
+        }}
+        className={`w-full bg-zinc-900 border border-zinc-800 rounded px-2 text-[10px] text-zinc-200 focus:outline-none focus:border-sky-500 h-7 flex items-center justify-between ${
+          disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+        }`}
+      >
+        <input
+          type="text"
+          disabled={disabled}
+          value={isOpen ? search : displayText}
+          placeholder={isOpen ? '検索...' : placeholder}
+          onChange={(e) => {
+            e.stopPropagation();
+            setSearch(e.target.value);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(true);
+          }}
+          className="bg-transparent border-none outline-none text-[10px] text-zinc-200 w-full h-full p-0 cursor-pointer focus:cursor-text"
+        />
+        <span className="text-[7px] text-zinc-500 select-none shrink-0 ml-1">▼</span>
+      </div>
+      {isOpen && !disabled && (
+        <div className="absolute z-[1100] top-8 left-0 right-0 max-h-48 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded shadow-2xl p-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100">
+          <div
+            onClick={() => {
+              onChange('');
+              setIsOpen(false);
+            }}
+            className="px-2 py-1 text-[9.5px] rounded hover:bg-zinc-800 text-zinc-400 cursor-pointer"
+          >
+            未選択
+          </div>
+          {filteredOptions.length === 0 ? (
+            <div className="px-2 py-3 text-[9.5px] text-zinc-500 text-center">一致する選手がいません</div>
+          ) : (
+            filteredOptions.map(opt => (
+              <div
+                key={opt.id}
+                onClick={() => {
+                  onChange(returnId ? opt.id : opt.name);
+                  setIsOpen(false);
+                }}
+                className={`px-2 py-1 text-[9.5px] rounded hover:bg-zinc-800 text-zinc-200 cursor-pointer flex items-center justify-between ${
+                  (opt.id === value || opt.name === value) ? 'bg-sky-950/40 text-sky-400 border border-sky-900/30' : ''
+                }`}
+              >
+                <span>{opt.name}</span>
+                {opt.number && <span className="text-[8px] opacity-60">#{opt.number}</span>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface AiLiveStatReceiverProps {
   events: TaggedEvent[];
   players?: Player[];
@@ -59,6 +174,36 @@ interface AiLiveStatReceiverProps {
   teamBName?: string;
   initialPitcherA?: string;
   initialPitcherB?: string;
+  pitcherA?: string;
+  pitcherB?: string;
+  onUpdatePitcherA?: (val: string) => void;
+  onUpdatePitcherB?: (val: string) => void;
+  defense?: string;
+  onUpdateDefense?: (val: string) => void;
+  catcherId?: string;
+  onUpdateCatcherId?: (val: string) => void;
+  inf1Id?: string;
+  onUpdateInf1Id?: (val: string) => void;
+  inf2Id?: string;
+  onUpdateInf2Id?: (val: string) => void;
+  inf3Id?: string;
+  onUpdateInf3Id?: (val: string) => void;
+  inf4Id?: string;
+  onUpdateInf4Id?: (val: string) => void;
+  lfId?: string;
+  onUpdateLfId?: (val: string) => void;
+  cfId?: string;
+  onUpdateCfId?: (val: string) => void;
+  rfId?: string;
+  onUpdateRfId?: (val: string) => void;
+  dhId?: string;
+  onUpdateDhId?: (val: string) => void;
+  onUpdatePlayerBattingOrder?: (id: string, order: number | undefined) => void;
+  onUpdatePlayerHand?: (id: string, hand: 'R' | 'L' | 'S') => void;
+  onUpdatePlayerThrows?: (id: string, hand: 'R' | 'L') => void;
+  onUpdatePlayerBats?: (id: string, hand: 'R' | 'L' | 'S') => void;
+  activePlayerId?: string | null;
+  onSelectPlayer?: (id: string | null) => void;
   onAddEvent?: (event: Partial<TaggedEvent>) => void;
   onUpdateEvent?: (eventId: string, updates: Partial<TaggedEvent>) => void;
   onNavigateToMatrix?: () => void;
@@ -78,6 +223,36 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   teamBName = '後攻チーム',
   initialPitcherA = '投手A',
   initialPitcherB = '投手B',
+  pitcherA,
+  pitcherB,
+  onUpdatePitcherA,
+  onUpdatePitcherB,
+  defense = '',
+  onUpdateDefense,
+  catcherId = '',
+  onUpdateCatcherId,
+  inf1Id = '',
+  onUpdateInf1Id,
+  inf2Id = '',
+  onUpdateInf2Id,
+  inf3Id = '',
+  onUpdateInf3Id,
+  inf4Id = '',
+  onUpdateInf4Id,
+  lfId = '',
+  onUpdateLfId,
+  cfId = '',
+  onUpdateCfId,
+  rfId = '',
+  onUpdateRfId,
+  dhId = '',
+  onUpdateDhId,
+  onUpdatePlayerBattingOrder,
+  onUpdatePlayerHand: _onUpdatePlayerHand,
+  onUpdatePlayerThrows,
+  onUpdatePlayerBats,
+  activePlayerId: _activePlayerId = null,
+  onSelectPlayer,
   onAddEvent,
   onNavigateToMatrix,
   onNavigateToOrganizer,
@@ -768,6 +943,32 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     };
   }, [isCvAutoActive, videoUrl]);
 
+  const [isLineupDefenseOpen, setIsLineupDefenseOpen] = useState<boolean>(true);
+  const [lineupTab, setLineupTab] = useState<'lineup' | 'defense'>('lineup');
+
+  const battingTeam = currentHalf === 'top' ? teamAName : teamBName;
+  const defendingTeam = currentHalf === 'top' ? teamBName : teamAName;
+
+  const battingPlayers = React.useMemo(() => {
+    const teamPlayers = players.filter(p => p.teamName === battingTeam);
+    return teamPlayers.sort((a, b) => {
+      const orderA = a.battingOrder && a.battingOrder >= 1 && a.battingOrder <= 9 ? Number(a.battingOrder) : 99;
+      const orderB = b.battingOrder && b.battingOrder >= 1 && b.battingOrder <= 9 ? Number(b.battingOrder) : 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return Number(a.number || 0) - Number(b.number || 0);
+    });
+  }, [players, battingTeam]);
+
+  const pitchingPlayers = players.filter(p => {
+    if (p.teamName !== defendingTeam) return false;
+    const pos = p.positionType || 'pitcher';
+    return pos === 'pitcher' || pos === 'both';
+  });
+  const defendingPlayers = players.filter(p => p.teamName === defendingTeam);
+
+  const activePitcherName = defendingTeam === teamAName ? (pitcherA || initialPitcherA) : (pitcherB || initialPitcherB);
+  const activePitcherPlayer = defendingPlayers.find(p => p.name === activePitcherName);
+
   const activeLineup = currentHalf === 'top' ? lineupTop : lineupBottom;
   const activePitcherList = currentHalf === 'top' ? pitchersTeamB : pitchersTeamA;
   const activePitcherIdx = currentHalf === 'top' ? activePitcherIdxB : activePitcherIdxA;
@@ -840,8 +1041,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               </>
             )}
           </button>
-
-
 
           <button
             onClick={() => setIsSettingOpen(true)}
@@ -1009,7 +1208,488 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           チェンジ
         </button>
 
+        {/* Toggle Lineup & Defense Roster Setting Button */}
+        <button
+          type="button"
+          onClick={() => setIsLineupDefenseOpen(!isLineupDefenseOpen)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer shadow ${
+            isLineupDefenseOpen
+              ? 'bg-sky-600 text-white border-sky-400 shadow-[0_0_12px_rgba(14,165,233,0.4)]'
+              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+          }`}
+          title="1〜9番打順一覧入力＆守備設定パネルを開閉します"
+        >
+          <span>📋 打順・守備設定</span>
+          <span className="text-[10px]">{isLineupDefenseOpen ? '▲' : '▼'}</span>
+        </button>
+
       </div>
+
+      {/* 2.5 📋 TEAM LINEUP & DEFENSE ROSTER SETTINGS PANEL (打順一覧入力 ＆ 守備設定交代) */}
+      {isLineupDefenseOpen && (
+        <div className="glass-panel rounded-2xl border border-zinc-800/90 bg-zinc-950/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Header Bar with Tab Switches */}
+          <div className="px-4 py-2.5 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-white flex items-center gap-1.5">
+                📋 打順・守備スタメン設定
+              </span>
+              <span className="text-[10px] text-zinc-400">
+                [攻: <span className="text-sky-300 font-bold">{battingTeam}</span> / 守: <span className="text-amber-300 font-bold">{defendingTeam}</span>]
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setLineupTab('lineup')}
+                  className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                    lineupTab === 'lineup'
+                      ? 'bg-sky-600 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  📋 1〜9番 打順一覧テーブル
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLineupTab('defense')}
+                  className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                    lineupTab === 'defense'
+                      ? 'bg-amber-600 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🛡️ 守備位置設定 (コードウィンドウ方式)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Content Body */}
+          <div className="p-3 bg-zinc-950/60">
+            {lineupTab === 'lineup' ? (
+              /* TAB 1: 1〜9番 打順一覧テーブル */
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between text-[11px] text-zinc-400 px-1">
+                  <span>{battingTeam} の打順一覧（ドロップダウンで選手を選択すると、打順が全機能へ即座に反映・保存されます）</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((orderNum) => {
+                    const assignedPlayer = battingPlayers.find(p => Number(p.battingOrder) === orderNum);
+                    const isActive = currentBatter.order === orderNum;
+
+                    return (
+                      <div
+                        key={orderNum}
+                        className={`p-2.5 rounded-xl border flex flex-col gap-1.5 transition-all ${
+                          isActive
+                            ? 'bg-sky-950/60 border-sky-500 shadow-[0_0_12px_rgba(14,165,233,0.3)] ring-1 ring-sky-500/50'
+                            : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-black font-mono ${isActive ? 'text-sky-300' : 'text-zinc-400'}`}>
+                            {orderNum}番
+                          </span>
+                          {isActive && (
+                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-sky-500 text-black">
+                              打席中
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Player Selector */}
+                        <SearchableSelect
+                          value={assignedPlayer?.id || ''}
+                          options={battingPlayers}
+                          returnId={true}
+                          placeholder="選手選択"
+                          onChange={(newId) => {
+                            if (newId) {
+                              onUpdatePlayerBattingOrder?.(newId, orderNum);
+                            } else if (assignedPlayer) {
+                              onUpdatePlayerBattingOrder?.(assignedPlayer.id, undefined);
+                            }
+                          }}
+                        />
+
+                        {/* Number & Hand & Select Button */}
+                        <div className="flex items-center justify-between gap-1 pt-0.5">
+                          {assignedPlayer ? (
+                            <>
+                              <select
+                                value={assignedPlayer.bats || assignedPlayer.hand || 'R'}
+                                onChange={(e) => {
+                                  const val = e.target.value as 'R' | 'L' | 'S';
+                                  onUpdatePlayerBats?.(assignedPlayer.id, val);
+                                }}
+                                className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-amber-300 font-bold focus:outline-none cursor-pointer h-6 px-1 text-center"
+                                title="打席の左右"
+                              >
+                                <option value="R">右打</option>
+                                <option value="L">左打</option>
+                                <option value="S">両打</option>
+                              </select>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveBatterIdx(orderNum - 1);
+                                  if (assignedPlayer.id) onSelectPlayer?.(assignedPlayer.id);
+                                }}
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold cursor-pointer transition-colors ${
+                                  isActive
+                                    ? 'bg-sky-600 text-white font-black'
+                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                                }`}
+                                title="この打者を打席にセット"
+                              >
+                                ▶ 打席
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[9px] text-zinc-600 italic">未割当</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* TAB 2: 🛡️ 守備位置設定 (コードウィンドウ方式) */
+              <div className="flex flex-col gap-2.5 select-none">
+                <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 pb-0.5">
+                  🛡️ 守備設定交代 [守: {defendingTeam}]（各ポジションごとに守備選手と打順を設定）
+                </div>
+
+                <div className="space-y-2">
+                  {/* Row 1: Pitcher, Catcher, SS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">投手 (P)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={defendingTeam === teamAName ? (pitcherA || initialPitcherA) : (pitcherB || initialPitcherB)}
+                          options={pitchingPlayers}
+                          returnId={false}
+                          onChange={(val) => {
+                            if (defendingTeam === teamAName) onUpdatePitcherA?.(val);
+                            else onUpdatePitcherB?.(val);
+                          }}
+                        />
+                        {activePitcherPlayer && (
+                          <select
+                            value={activePitcherPlayer.throws || (activePitcherPlayer.hand === 'L' ? 'L' : 'R')}
+                            onChange={(e) => {
+                              const val = e.target.value as 'R' | 'L';
+                              onUpdatePlayerThrows?.(activePitcherPlayer.id, val);
+                            }}
+                            className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-8 text-center shrink-0"
+                            title="投手の投球利き腕"
+                          >
+                            <option value="R">右</option>
+                            <option value="L">左</option>
+                          </select>
+                        )}
+                        {activePitcherPlayer && !dhId && (
+                          <select
+                            value={activePitcherPlayer.battingOrder || ''}
+                            onChange={(e) => onUpdatePlayerBattingOrder?.(activePitcherPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                            className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                            title="投手の打順 (DHなし)"
+                          >
+                            <option value="">打順</option>
+                            {[1,2,3,4,5,6,7,8,9].map(num => (
+                              <option key={num} value={num}>{num}番</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">捕手 (C)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={catcherId}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateCatcherId?.(val)}
+                        />
+                        {catcherId && (() => {
+                          const selPlayer = players.find(p => p.id === catcherId || p.name === catcherId);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">遊撃手 (SS)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={inf1Id}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateInf1Id?.(val)}
+                        />
+                        {inf1Id && (() => {
+                          const selPlayer = players.find(p => p.id === inf1Id || p.name === inf1Id);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 2: 1B, 2B, 3B */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">一塁手 (1B)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={inf4Id}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateInf4Id?.(val)}
+                        />
+                        {inf4Id && (() => {
+                          const selPlayer = players.find(p => p.id === inf4Id || p.name === inf4Id);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">二塁手 (2B)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={inf2Id}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateInf2Id?.(val)}
+                        />
+                        {inf2Id && (() => {
+                          const selPlayer = players.find(p => p.id === inf2Id || p.name === inf2Id);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">三塁手 (3B)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={inf3Id}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateInf3Id?.(val)}
+                        />
+                        {inf3Id && (() => {
+                          const selPlayer = players.find(p => p.id === inf3Id || p.name === inf3Id);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 3: LF, CF, RF */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">左翼手 (LF)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={lfId}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateLfId?.(val)}
+                        />
+                        {lfId && (() => {
+                          const selPlayer = players.find(p => p.id === lfId || p.name === lfId);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">中堅手 (CF)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={cfId}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateCfId?.(val)}
+                        />
+                        {cfId && (() => {
+                          const selPlayer = players.find(p => p.id === cfId || p.name === cfId);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">右翼手 (RF)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={rfId}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateRfId?.(val)}
+                        />
+                        {rfId && (() => {
+                          const selPlayer = players.find(p => p.id === rfId || p.name === rfId);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 4: DH & Memo */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="flex flex-col gap-0.5 col-span-1">
+                      <label className="text-[8px] uppercase font-bold text-sky-400">指名打者 (DH)</label>
+                      <div className="flex gap-1">
+                        <SearchableSelect
+                          value={dhId}
+                          options={defendingPlayers}
+                          returnId={false}
+                          onChange={(val) => onUpdateDhId?.(val)}
+                          placeholder="未選択"
+                        />
+                        {dhId && (() => {
+                          const selPlayer = players.find(p => p.id === dhId || p.name === dhId);
+                          return (
+                            <select
+                              value={selPlayer?.battingOrder || ''}
+                              onChange={(e) => selPlayer && onUpdatePlayerBattingOrder?.(selPlayer.id, e.target.value ? Number(e.target.value) : undefined)}
+                              className="bg-zinc-950 border border-zinc-800 rounded text-[9px] text-zinc-300 font-bold focus:outline-none cursor-pointer h-7 w-12 text-center shrink-0"
+                              title="DHの打順を設定"
+                            >
+                              <option value="">打順</option>
+                              {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <option key={num} value={num}>{num}番</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5 col-span-2">
+                      <label className="text-[8px] uppercase font-bold text-zinc-400">守備シフトメモ</label>
+                      <input
+                        type="text"
+                        value={defense}
+                        onChange={(e) => onUpdateDefense?.(e.target.value)}
+                        placeholder="例: 内野前進守備、長打警戒シフト"
+                        className="bg-zinc-900 border border-zinc-800 rounded px-2 text-[10px] text-zinc-200 focus:outline-none focus:border-sky-500 h-7"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
 
       {/* 3. UNIFIED VIDEO PLAYER & TAGGING CONSOLE - FULL WIDTH */}
