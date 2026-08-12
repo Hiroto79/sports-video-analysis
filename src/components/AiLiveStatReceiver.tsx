@@ -230,9 +230,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [isInningWarmup, setIsInningWarmup] = useState<boolean>(false);
   const inningWarmupEndSecRef = useRef<number>(0);
 
-  // 🔍 ログ確認再生モード (過去の投球確認中の自動打刻停止フラグ)
-  const [isReviewingPitch, setIsReviewingPitch] = useState<boolean>(false);
-
   // Video Preview Player state
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
@@ -363,7 +360,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // -------------------------------------------------------------
   const seekAndPlayVideo = (timeSec: number, pitchNum?: number) => {
     if (pitchNum !== undefined) setActiveSeekingPitchNum(pitchNum);
-    setIsReviewingPitch(true); // 🔍 ログ確認再生モード（自動打刻を安全に一時停止）
     
     // 投球始動地点（ワインドアップ: timeSec - leadInSec）
     const motionStartTime = Math.max(0, timeSec - leadInSec);
@@ -376,7 +372,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       vid.play().catch(e => console.warn('Play interrupted:', e));
     }
     onSeek?.(motionStartTime);
-    setLastNotification(`🎬 投球 #${pitchNum || ''} の始動シーン（${formatSeconds(motionStartTime)}〜）を確認再生中（自動打刻一時停止）`);
+    setLastNotification(`🎬 投球 #${pitchNum || ''} の始動シーン（${formatSeconds(motionStartTime)}〜）へジャンプ再生`);
   };
 
   // -------------------------------------------------------------
@@ -748,12 +744,11 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
             }
 
-            // 🎯 5. 本番センターカメラ投球モーションピーク検知
+            // 🎯 5. 本番センターカメラ投球モーションピーク検知 (既打刻のみスキップし、新しい投球はノンストップで自動検知)
             if (
               !isBeforeFirstPitch && 
               !isInningWarmupActive &&
               !isAlreadyTagged &&
-              !isReviewingPitch &&
               !isSceneCutTransition &&
               motionScore >= 28 && 
               motionScore <= 60 && // リプレイの激しいカメラワークやワイプ（>60）を除外
@@ -782,9 +777,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 video_timestamp: Number(curTime.toFixed(2))
               });
 
-              setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ監視中）'), 3500);
-            } else if (isAlreadyTagged || isReviewingPitch) {
-              setCvDetectStatus('🔍 過去ログ確認中（既打刻シーンのため検知ミュート）');
+              setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ常時監視中）'), 3500);
+            } else if (isAlreadyTagged) {
+              setCvDetectStatus('🔍 記録済み投球シーン（二重打刻スキップ中）');
             } else if (isInningWarmupActive) {
               setCvDetectStatus('⚾ イニング間ウォームアップ中（練習投球を自動スキップ）');
             } else if (isBeforeFirstPitch) {
@@ -1222,17 +1217,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               {/* Active Playing Badge */}
               {activeSeekingPitchNum && (
                 <div className="absolute top-2 left-2 bg-amber-950/90 border border-amber-500/80 px-2.5 py-1 rounded-lg text-[10px] font-black text-amber-300 shadow backdrop-blur-sm z-10 flex items-center gap-2">
-                  <span>🎬 投球 #{activeSeekingPitchNum} を確認再生中（自動打刻停止中）</span>
-                  <button
-                    onClick={() => {
-                      setActiveSeekingPitchNum(null);
-                      setIsReviewingPitch(false);
-                      setLastNotification('▶️ ログ確認終了 → 最新のライブ自動検知へ復帰しました');
-                    }}
-                    className="px-1.5 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-black font-black text-[9px] cursor-pointer"
-                  >
-                    復帰
-                  </button>
+                  <span>🎬 投球 #{activeSeekingPitchNum} の始動シーンから再生中</span>
                 </div>
               )}
             </div>
