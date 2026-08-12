@@ -435,6 +435,70 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setLastNotification(`✏️ 投球 #${latestStat?.pitch_number} の判定を「${normalizeResult(newResult).label}」に修正しました`);
   };
 
+  // -------------------------------------------------------------
+  // AUTO TAGGING SIMULATOR & TRIGGER CONTROLS
+  // -------------------------------------------------------------
+  const [isAutoTagging, setIsAutoTagging] = useState<boolean>(false);
+  const autoTagTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const triggerOneAutoPitch = () => {
+    const pitchTypes = ['4シーム', '2シーム', 'スライダー', 'カーブ', 'フォーク', 'カットボール'];
+    const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
+    
+    const rRand = Math.random();
+    let res = 'Strike';
+    if (rRand < 0.35) res = 'Strike';
+    else if (rRand < 0.70) res = 'Ball';
+    else if (rRand < 0.85) res = 'Foul';
+    else res = 'InPlay';
+
+    const pType = pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
+    const targetC = courses[Math.floor(Math.random() * courses.length)];
+    const isMiss = Math.random() < 0.25;
+    const actualC = isMiss ? courses[Math.floor(Math.random() * courses.length)] : targetC;
+    const missCm = isMiss ? parseFloat((Math.random() * 20 + 6).toFixed(1)) : parseFloat((Math.random() * 4).toFixed(1));
+    const missInches = parseFloat((missCm / 2.54).toFixed(1));
+    const speed = pType === '4シーム' ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
+
+    const payload: AiStatPayload = {
+      result: res,
+      confidence: parseFloat((Math.random() * 0.12 + 0.88).toFixed(2)),
+      ball_speed: speed,
+      pitch_type: pType,
+      course: actualC,
+      camera_view: 'center',
+      target_course: targetC,
+      actual_course: actualC,
+      miss_distance_cm: missCm,
+      miss_distance_inch: missInches,
+      is_opposite: isMiss && Math.random() < 0.5,
+      video_timestamp: currentTime + (history.length * 4.0)
+    };
+
+    handleIngestStat(payload);
+  };
+
+  const toggleAutoTagging = () => {
+    if (isAutoTagging) {
+      if (autoTagTimerRef.current) clearInterval(autoTagTimerRef.current);
+      setIsAutoTagging(false);
+      setLastNotification('⏸️ AI自動タグ付けを一時停止しました');
+    } else {
+      setIsAutoTagging(true);
+      triggerOneAutoPitch();
+      autoTagTimerRef.current = setInterval(() => {
+        triggerOneAutoPitch();
+      }, 2500);
+      setLastNotification('🚀 AI動画自動タグ付けを開始しました（2.5秒間隔で1球ずつ自動打刻中）');
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (autoTagTimerRef.current) clearInterval(autoTagTimerRef.current);
+    };
+  }, []);
+
   // Add detail tag (Pitch Type / Course) to latest pitch
   const handleAddDetailTag = (key: 'pitch_type' | 'course', val: string) => {
     if (history.length === 0) return;
@@ -567,34 +631,67 @@ print("送信結果:", response.json())`;
 
         {/* Action badges & Navigation */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* 🚀 AI自動タグ付けスタートボタン */}
+          <button
+            onClick={toggleAutoTagging}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all shadow-lg cursor-pointer active:scale-95 border ${
+              isAutoTagging
+                ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.6)]'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)] scale-[1.02]'
+            }`}
+            title="AIによる1球ごとの投球自動検知・打刻シミュレーションを開始/停止します"
+          >
+            {isAutoTagging ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
+                <span>⏸️ AI自動解析を停止</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" />
+                <span>🚀 AI自動タグ付けスタート</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={triggerOneAutoPitch}
+            disabled={isAutoTagging}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 text-xs font-bold border border-amber-500/40 transition-all shadow cursor-pointer active:scale-95 disabled:opacity-40"
+            title="テスト用に1球分のAI検知データを手動で送信・打刻します"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>⚡ 1球テスト打刻</span>
+          </button>
+
           <button
             onClick={() => setIsSettingOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 border border-indigo-500/40 hover:bg-indigo-600/40 text-indigo-300 text-xs font-bold transition-all shadow cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/40 hover:bg-indigo-600/40 text-indigo-300 text-xs font-bold transition-all shadow cursor-pointer active:scale-95"
             title="打順表（1〜9番）や投手ローテーションの事前設定を開きます"
           >
             <Users className="w-3.5 h-3.5 text-indigo-400" />
-            <span>📋 打順・投手事前登録</span>
+            <span>📋 打順・投手登録</span>
           </button>
 
           {onNavigateToOrganizer && (
             <button
               onClick={onNavigateToOrganizer}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 hover:bg-emerald-600/30 text-emerald-300 text-xs font-bold transition-all shadow cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
               title="上部に動画プレビュー、下部に1球ごとのタグ情報が横並びで表示される画面を開きます"
             >
-              <Film className="w-3.5 h-3.5" />
-              <span>📁 動画＆タグ一覧 (オーガナイザー)</span>
+              <Film className="w-3.5 h-3.5 text-emerald-400" />
+              <span>📁 オーガナイザー</span>
             </button>
           )}
 
           {onNavigateToMatrix && (
             <button
               onClick={onNavigateToMatrix}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600/20 border border-sky-500/30 hover:bg-sky-600/30 text-sky-300 text-xs font-bold transition-all cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
               title="クロス集計マトリックス画面を開きます"
             >
-              <Grid3X3 className="w-3.5 h-3.5" />
-              <span>🧮 マトリックス集計</span>
+              <Grid3X3 className="w-3.5 h-3.5 text-sky-400" />
+              <span>🧮 マトリックス</span>
             </button>
           )}
         </div>
