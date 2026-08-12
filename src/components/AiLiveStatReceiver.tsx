@@ -230,6 +230,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [isInningWarmup, setIsInningWarmup] = useState<boolean>(false);
   const inningWarmupEndSecRef = useRef<number>(0);
 
+  // 🔍 ログ確認再生モード (過去の投球確認中の自動打刻停止フラグ)
+  const [isReviewingPitch, setIsReviewingPitch] = useState<boolean>(false);
+
   // Video Preview Player state
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
@@ -360,6 +363,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // -------------------------------------------------------------
   const seekAndPlayVideo = (timeSec: number, pitchNum?: number) => {
     if (pitchNum !== undefined) setActiveSeekingPitchNum(pitchNum);
+    setIsReviewingPitch(true); // 🔍 ログ確認再生モード（自動打刻を安全に一時停止）
     
     // 投球始動地点（ワインドアップ: timeSec - leadInSec）
     const motionStartTime = Math.max(0, timeSec - leadInSec);
@@ -372,7 +376,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       vid.play().catch(e => console.warn('Play interrupted:', e));
     }
     onSeek?.(motionStartTime);
-    setLastNotification(`🎬 投球 #${pitchNum || ''} の始動シーン（${formatSeconds(motionStartTime)}〜）から再生開始`);
+    setLastNotification(`🎬 投球 #${pitchNum || ''} の始動シーン（${formatSeconds(motionStartTime)}〜）を確認再生中（自動打刻一時停止）`);
   };
 
   // -------------------------------------------------------------
@@ -732,16 +736,24 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               setIsInningWarmup(false);
             }
 
-            // 🛡️ 3. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
+            // 🛡️ 3. 既打刻シーンの完全重複防止ガード (動画を巻き戻して確認再生している時の二重打刻を100%遮断)
+            const isAlreadyTagged = history.some(item => {
+              if (item.video_timestamp === undefined) return false;
+              return Math.abs(curTime - item.video_timestamp) < 4.2;
+            });
+
+            // 🛡️ 4. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
             const isSceneCutTransition = avgDiff > 55; // 画面全体の激変は中継ワイプ/アングル切り替え
             if (isSceneCutTransition) {
               setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
             }
 
-            // 🎯 4. 本番センターカメラ投球モーションピーク検知 (マウンド/ホーム領域の動き適正範囲 & 物理的投球間隔10.5秒以上 & 試合開始後 & 非イニング練習 & 非リプレイ)
+            // 🎯 5. 本番センターカメラ投球モーションピーク検知
             if (
               !isBeforeFirstPitch && 
               !isInningWarmupActive &&
+              !isAlreadyTagged &&
+              !isReviewingPitch &&
               !isSceneCutTransition &&
               motionScore >= 28 && 
               motionScore <= 60 && // リプレイの激しいカメラワークやワイプ（>60）を除外
@@ -771,6 +783,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               });
 
               setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ監視中）'), 3500);
+            } else if (isAlreadyTagged || isReviewingPitch) {
+              setCvDetectStatus('🔍 過去ログ確認中（既打刻シーンのため検知ミュート）');
             } else if (isInningWarmupActive) {
               setCvDetectStatus('⚾ イニング間ウォームアップ中（練習投球を自動スキップ）');
             } else if (isBeforeFirstPitch) {
@@ -1207,8 +1221,18 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
               {/* Active Playing Badge */}
               {activeSeekingPitchNum && (
-                <div className="absolute top-2 left-2 bg-amber-950/90 border border-amber-500/80 px-2.5 py-1 rounded-lg text-[10px] font-black text-amber-300 shadow backdrop-blur-sm z-10 animate-pulse pointer-events-none">
-                  🎬 投球 #{activeSeekingPitchNum} の始動シーンから再生中
+                <div className="absolute top-2 left-2 bg-amber-950/90 border border-amber-500/80 px-2.5 py-1 rounded-lg text-[10px] font-black text-amber-300 shadow backdrop-blur-sm z-10 flex items-center gap-2">
+                  <span>🎬 投球 #{activeSeekingPitchNum} を確認再生中（自動打刻停止中）</span>
+                  <button
+                    onClick={() => {
+                      setActiveSeekingPitchNum(null);
+                      setIsReviewingPitch(false);
+                      setLastNotification('▶️ ログ確認終了 → 最新のライブ自動検知へ復帰しました');
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-black font-black text-[9px] cursor-pointer"
+                  >
+                    復帰
+                  </button>
                 </div>
               )}
             </div>
