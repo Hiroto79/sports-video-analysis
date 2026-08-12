@@ -6,7 +6,8 @@ import {
   RefreshCw, 
   Play, 
   Trash2, 
-  Sliders
+  Sliders,
+  Upload
 } from 'lucide-react';
 import type { TaggedEvent, Player } from '../types';
 
@@ -809,6 +810,52 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     );
   };
 
+  // 📂 Import AI-detected JSON results (from real_baseball_cv_pipeline.py)
+  const handleImportJsonFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const raw = JSON.parse(event.target?.result as string);
+        if (!Array.isArray(raw)) {
+          alert('不正なJSON形式です（配列形式である必要があります）');
+          return;
+        }
+
+        const imported: AiStatPayload[] = raw.map((item: any, idx: number) => {
+          const vidTime = item.video_timestamp ?? item.clip_start ?? 0;
+          const startT = item.clip_start ?? Math.max(0, vidTime - leadInSec);
+          const endT = item.clip_end ?? (vidTime + leadOutSec);
+
+          return {
+            pitch_number: idx + 1,
+            result: item.result || (item.has_swing ? '空振りストライク' : '投球検知 (要判定)'),
+            confidence: 1.0,
+            pitch_type: item.pitch_type || selectedPitchType,
+            course: item.course || selectedCourse,
+            target_course: item.target_course || selectedCourse,
+            actual_course: item.actual_course || selectedCourse,
+            video_timestamp: vidTime,
+            start_time: startT,
+            end_time: endT,
+            receivedAt: new Date().toLocaleTimeString(),
+            notes: item.notes || `AI検出クリップ (${formatSeconds(startT)} - ${formatSeconds(endT)})`
+          };
+        });
+
+        pitchCounterRef.current = imported.length;
+        setHistory(imported);
+        setLastNotification(`📁 AI検出ファイルから ${imported.length} 件の投球クリップを正確に読み込みました`);
+        playBeep(880, 'sine');
+      } catch (err: any) {
+        alert('JSONファイルの読み込みに失敗しました: ' + (err.message || err));
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // Keyboard shortcuts for live video tagging (B, S, K, F, H, W, Space)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1071,6 +1118,20 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             <Sliders className="w-3.5 h-3.5 text-indigo-400" />
             <span>⚙️ タイミング調整</span>
           </button>
+
+          <label 
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-850 hover:bg-zinc-750 text-zinc-200 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
+            title="Python AIスクリプト (real_baseball_cv_pipeline.py) で出力した検出結果JSONを取り込みます"
+          >
+            <Upload className="w-3.5 h-3.5 text-sky-400" />
+            <span>📂 AI検出JSON読込</span>
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleImportJsonFile}
+              className="hidden"
+            />
+          </label>
 
           {onNavigateToOrganizer && (
             <button
