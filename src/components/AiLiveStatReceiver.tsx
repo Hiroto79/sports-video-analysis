@@ -8,7 +8,6 @@ import {
   Trash2, 
   Sliders
 } from 'lucide-react';
-import { fetchMlbGameRealPitches } from '../services/mlbStatcastService';
 import type { TaggedEvent, Player } from '../types';
 
 export interface AiStatPayload {
@@ -468,6 +467,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
   const normalizeResult = (res: string): { label: string; color: string; bg: string; border: string; badge: string; type: 'strike' | 'ball' | 'foul' | 'inplay' | 'walk' | 'hbp' | 'k' | 'pickoff' | 'steal' | 'other' } => {
     const r = (res || '').toLowerCase();
+    if (r.includes('pending') || r.includes('未判定') || r.includes('検知')) {
+      return { label: '投球検知 (要判定)', color: 'text-sky-300', bg: 'bg-sky-500/10', border: 'border-sky-500/40', badge: 'bg-sky-500 text-black font-black animate-pulse', type: 'other' };
+    }
     if (r.includes('k') || r.includes('三振') || r.includes('strikeout')) {
       return { label: '三振', color: 'text-rose-400', bg: 'bg-rose-950/40', border: 'border-rose-500/60', badge: 'bg-rose-600 text-white font-bold', type: 'k' };
     }
@@ -745,32 +747,17 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     }
   };
 
-  // -------------------------------------------------------------
-  // 6. DIRECT ONE-TAP RESULT TAGGING (投球の瞬間にユーザーが打刻)
-  // -------------------------------------------------------------
   const triggerDirectPitchTag = (resultType: string) => {
-    const isFastball = selectedPitchType.includes('4シーム') || selectedPitchType.includes('2シーム');
-    const speed = isFastball ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
-
     const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
     const pitchTime = Number(curVidTime.toFixed(2));
-
-    const isMiss = Math.random() < 0.25;
-    const missCm = isMiss ? parseFloat((Math.random() * 18 + 6).toFixed(1)) : parseFloat((Math.random() * 4).toFixed(1));
-    const missInches = parseFloat((missCm / 2.54).toFixed(1));
 
     const payload: AiStatPayload = {
       result: resultType,
       confidence: 1.0,
-      ball_speed: speed,
       pitch_type: selectedPitchType,
       course: selectedCourse,
-      camera_view: 'center',
       target_course: selectedCourse,
-      actual_course: isMiss ? '真ん中高め' : selectedCourse,
-      miss_distance_cm: missCm,
-      miss_distance_inch: missInches,
-      is_opposite: isMiss && Math.random() < 0.4,
+      actual_course: selectedCourse,
       video_timestamp: pitchTime
     };
 
@@ -820,62 +807,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     setSelectedPitchNums(prev => 
       prev.includes(pitchNum) ? prev.filter(n => n !== pitchNum) : [...prev, pitchNum]
     );
-  };
-
-  // 📡 Real MLB Statcast & Gameday Synchronizer
-  const [isImportingStatcast, setIsImportingStatcast] = useState<boolean>(false);
-
-  const handleImportRealStatcast = async () => {
-    try {
-      setIsImportingStatcast(true);
-      setLastNotification('📡 MLB公式Statcast APIから実投球データを取得中...');
-      const data = await fetchMlbGameRealPitches('2023-08-13', 'Mets', 'Braves');
-
-      if (!data.pitches || data.pitches.length === 0) {
-        alert('Statcastデータの取得に失敗しました');
-        setIsImportingStatcast(false);
-        return;
-      }
-
-      // Convert Statcast real pitches to AiStatPayload
-      const baseTime = firstPitchTimestamp !== null ? firstPitchTimestamp : (currentVideoTime > 0 ? currentVideoTime : 5.0);
-      const avgPitchIntervalSec = 22.5;
-
-      const converted: AiStatPayload[] = data.pitches.map((p, idx) => {
-        const estTimestamp = Number((baseTime + idx * avgPitchIntervalSec).toFixed(2));
-        const clipStart = Math.max(0, estTimestamp - leadInSec);
-        const clipEnd = estTimestamp + leadOutSec;
-
-        return {
-          pitch_number: p.pitch_number,
-          result: p.result,
-          confidence: 1.0,
-          ball_speed: p.ball_speed,
-          pitch_type: p.pitch_type,
-          course: p.course,
-          target_course: p.course,
-          actual_course: p.course,
-          miss_distance_cm: 0,
-          video_timestamp: estTimestamp,
-          start_time: clipStart,
-          end_time: clipEnd,
-          receivedAt: `${p.inning}回${p.half === 'top' ? '表' : '裏'} (${p.count.balls}-${p.count.strikes})`,
-          pitcher: p.pitcher,
-          batter: p.batter,
-          notes: `MLB Statcast公式: ${p.call_description} (${p.speed_mph} mph)`
-        };
-      });
-
-      pitchCounterRef.current = converted.length;
-      setHistory(converted);
-      setLastNotification(`🎉 MLB公式Statcastより ${converted.length} 球の実投球データ（千賀滉大 vs アクーニャJr.等）を同期インポートしました！`);
-      playBeep(880, 'sine');
-    } catch (err: any) {
-      console.error(err);
-      alert('MLB Statcast APIの通信エラーが発生しました: ' + (err.message || err));
-    } finally {
-      setIsImportingStatcast(false);
-    }
   };
 
   // Keyboard shortcuts for live video tagging (B, S, K, F, H, W, Space)
@@ -999,29 +930,19 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               timeSinceLastPitch >= 15.0
             ) {
               lastPitchTimeRef.current = curTime;
-              setCvDetectStatus('⚡ 本番投球モーション検知！');
+              setCvDetectStatus('⚡ 投球モーション検知！');
               
-              const pitchTypes = ['4シーム', 'スライダー', 'カットボール', 'カーブ', 'フォーク', '2シーム'];
-              const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
-              const r = Math.random();
-              const res = r < 0.32 ? 'Strike' : r < 0.65 ? 'Ball' : r < 0.85 ? 'Foul' : 'InPlay';
-              const pt = pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
-              const cs = courses[Math.floor(Math.random() * courses.length)];
-
               handleIngestStat({
-                result: res,
-                confidence: 0.94,
-                ball_speed: pt.includes('4シーム') ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 10 + 134),
-                pitch_type: pt,
-                course: cs,
-                camera_view: 'center',
-                target_course: cs,
-                actual_course: cs,
-                miss_distance_cm: parseFloat((Math.random() * 5.5).toFixed(1)),
+                result: '投球検知 (要判定)',
+                confidence: 0.95,
+                pitch_type: selectedPitchType,
+                course: selectedCourse,
+                target_course: selectedCourse,
+                actual_course: selectedCourse,
                 video_timestamp: Number(curTime.toFixed(2))
               });
 
-              setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ常時監視中）'), 3500);
+              setTimeout(() => setCvDetectStatus('待機中（投球モーション常時監視中）'), 3500);
             } else if (isAlreadyTagged) {
               setCvDetectStatus('🔍 過去ログ確認中（既打刻シーンのため二重打刻スキップ）');
             } else if (isInningWarmupActive) {
@@ -1108,25 +1029,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleImportRealStatcast}
-            disabled={isImportingStatcast}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/80 shadow-lg cursor-pointer active:scale-95 transition-all"
-            title="MLB公式Statcast APIから、この試合の250球以上の全球種・球速・コース実データを一括インポートします"
-          >
-            {isImportingStatcast ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-white animate-spin border-2 border-white border-t-transparent" />
-                <span>📡 Statcast実データ取得中...</span>
-              </>
-            ) : (
-              <>
-                <Radio className="w-3.5 h-3.5 text-sky-300" />
-                <span>📡 MLB公式Statcast 実データ同期 (千賀滉大 vs アクーニャJr.等)</span>
-              </>
-            )}
-          </button>
-
           <button
             onClick={() => {
               if (isCvAutoActive) {
