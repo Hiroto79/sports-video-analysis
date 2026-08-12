@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', () => callback()),
   onUpdateError: (callback) => ipcRenderer.on('update-error', (_event, error) => callback(error)),
 
+  // AI Live Stat ingestion listeners
+  onAiStatReceived: (callback) => ipcRenderer.on('ai-stat-received', (_event, data) => callback(data)),
+  removeAiStatListener: () => ipcRenderer.removeAllListeners('ai-stat-received'),
+
   // Cleanup listeners
   removeAllUpdateListeners: () => {
     ipcRenderer.removeAllListeners('update-available');
@@ -22,5 +26,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('update-download-progress');
     ipcRenderer.removeAllListeners('update-downloaded');
     ipcRenderer.removeAllListeners('update-error');
+    ipcRenderer.removeAllListeners('ai-stat-received');
   }
 });

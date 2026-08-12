@@ -8,6 +8,7 @@ import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { OrganizerView } from './components/OrganizerView';
 import { MatrixView } from './components/MatrixView';
 import { MatrixPlayerModal } from './components/MatrixPlayerModal';
+import { AiLiveStatReceiver } from './components/AiLiveStatReceiver';
 import { supabase } from './lib/supabase';
 import { EventTimeline } from './components/EventTimeline';
 import { Tv, ExternalLink, Film, Upload, ChevronDown, Command, Scissors, Download, RefreshCw, Users, Eye, EyeOff } from 'lucide-react';
@@ -1873,8 +1874,8 @@ function App() {
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [isBoxSelecting]);
 
-  // App View Mode State: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger'
-  const [currentView, setCurrentView] = useState<'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger'>('tagger');
+  // App View Mode State: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger' | 'ai_receiver'
+  const [currentView, setCurrentView] = useState<'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger' | 'ai_receiver'>('tagger');
 
   // Live Roster Accordion Open State
   const [isLiveRosterOpen, setIsLiveRosterOpen] = useState(false);
@@ -2941,7 +2942,7 @@ function App() {
   };
 
 
-  const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger') => {
+  const handleViewChange = (newView: 'tagger' | 'analytics' | 'organizer' | 'matrix' | 'live_tagger' | 'ai_receiver') => {
     try {
       const video = videoPlayerRef.current?.getVideoElement();
       if (video) {
@@ -5153,6 +5154,17 @@ function App() {
             >
               ⏱️ {appLanguage === 'en' ? 'No-Video Tagger' : '動画なし打刻 (現地)'}
             </button>
+            <button
+              onClick={() => handleViewChange('ai_receiver')}
+              className={`px-2 py-1 rounded text-[10px] font-extrabold transition-all cursor-pointer border ${
+                currentView === 'ai_receiver'
+                  ? 'bg-gradient-to-r from-sky-600 to-indigo-600 border-sky-400 text-white shadow shadow-sky-950'
+                  : 'bg-zinc-900/80 border-sky-900/50 text-sky-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="Python画像解析AIからローカルPOSTされる投球判定をリアルタイム受信し、1タップで即座に修正します"
+            >
+              🤖 {appLanguage === 'en' ? 'AI Live Receiver' : 'AI自動受信・修正'}
+            </button>
           </div>
 
           {/* Change / Open Video Button */}
@@ -5336,7 +5348,7 @@ function App() {
             currentView === 'organizer' && activeOrganizerTab === 'grid'
               ? 'sticky top-[52px] z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 shadow-xl max-w-full px-4 py-3'
               : currentView === 'organizer'
-              ? 'max-w-7xl mx-auto p-2 lg:p-4'
+              ? (activeOrganizerTab === 'grid' ? 'max-w-2xl mx-auto p-2 lg:p-4' : 'max-w-7xl mx-auto p-2 lg:p-4')
               : 'max-w-5xl mx-auto p-4'
           }`}
         >
@@ -5657,6 +5669,39 @@ function App() {
           teamAName={teamAName}
           teamBName={teamBName}
           currentUser={currentUser}
+        />
+      ) : currentView === 'ai_receiver' ? (
+        /* 🤖 外部AI リアルタイム自動受信 ＆ ワンタップ即時修正画面 */
+        <AiLiveStatReceiver
+          events={events}
+          players={players}
+          teamAName={teamAName || '先攻チーム'}
+          teamBName={teamBName || '後攻チーム'}
+          initialPitcherA={pitcherA || '投手A'}
+          initialPitcherB={pitcherB || '投手B'}
+          currentTime={currentTime}
+          inningNum={inningNum}
+          inningHalf={inningHalf}
+          onNavigateToMatrix={() => handleViewChange('matrix')}
+          onNavigateToOrganizer={() => handleViewChange('organizer')}
+          onAddEvent={(newEvent) => {
+            // Use startTime/endTime and resolved playerName from AI
+            const ev: TaggedEvent = {
+              id: newEvent.id || `event_ai_${Date.now()}`,
+              timestamp: newEvent.timestamp ?? newEvent.startTime ?? currentTime,
+              startTime: newEvent.startTime ?? Math.max(0, currentTime - 2),
+              endTime: newEvent.endTime ?? (currentTime + 3),
+              actionId: newEvent.actionId || 'btn_pitch',
+              actionName: newEvent.actionName || '投球',
+              color: newEvent.color || 'bg-amber-600',
+              playerName: newEvent.playerName || (inningHalf === 'top' ? (pitcherB || '投手B') : (pitcherA || '投手A')),
+              labels: newEvent.labels || {},
+              createdAt: Date.now(),
+              gameDate: gameDate || new Date().toISOString().split('T')[0]
+            };
+            setEvents(prev => [...prev, ev]);
+            channelRef.current?.postMessage({ type: 'SYNC_EVENTS', events: [...events, ev] });
+          }}
         />
       ) : currentView === 'live_tagger' ? (
         /* ⏱️ 動画なし・超軽量ライブタギング専用画面 (Memory Leak & Crash FREE) */

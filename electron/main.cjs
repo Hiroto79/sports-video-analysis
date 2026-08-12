@@ -171,9 +171,90 @@ function createWindows() {
   }
 }
 
+// ---- Local HTTP Receiver Server for AI Live Stat Ingestion (Port 3001) ----
+let localServer = null;
+const HTTP_PORT = process.env.AI_RECEIVER_PORT || 3001;
+
+function startLocalReceiverServer() {
+  const http = require('http');
+
+  localServer = http.createServer((req, res) => {
+    // Enable CORS for all local requests (Python, curl, external tools)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // Health check endpoint
+    if (req.method === 'GET' && (req.url === '/api/status' || req.url === '/status')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', server: 'SportsVideoAnalysis AI Receiver', version: app.getVersion() }));
+      return;
+    }
+
+    // POST /api/add-stat endpoint
+    if (req.method === 'POST' && (req.url === '/api/add-stat' || req.url === '/add-stat')) {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body || '{}');
+          console.log('📡 [AI Receiver] Received stat payload:', data);
+
+          // Broadcast to renderer via IPC
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ai-stat-received', {
+              ...data,
+              receivedAt: new Date().toISOString()
+            });
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            status: 'ok',
+            message: 'Stat successfully delivered to UI',
+            received: data
+          }));
+        } catch (err) {
+          console.error('❌ [AI Receiver] Invalid JSON payload:', err);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'error', message: 'Invalid JSON body: ' + err.message }));
+        }
+      });
+      return;
+    }
+
+    // Fallback 404
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Endpoint not found', endpoints: ['POST /api/add-stat', 'GET /api/status'] }));
+  });
+
+  localServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`⚠️ [AI Receiver] Port ${HTTP_PORT} is already in use. Trying port ${Number(HTTP_PORT) + 1}...`);
+      localServer.listen(Number(HTTP_PORT) + 1, '0.0.0.0');
+    } else {
+      console.error('❌ [AI Receiver] Server error:', err);
+    }
+  });
+
+  localServer.listen(HTTP_PORT, '0.0.0.0', () => {
+    console.log(`🚀 [AI Receiver] Local HTTP receiver server listening at http://0.0.0.0:${HTTP_PORT}/api/add-stat`);
+  });
+}
+
 // App Ready Lifecycle
 app.whenReady().then(() => {
   createWindows();
+  startLocalReceiverServer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -184,5 +265,8 @@ app.whenReady().then(() => {
 
 // Quit when all windows are closed
 app.on('window-all-closed', () => {
+  if (localServer) {
+    try { localServer.close(); } catch (_) {}
+  }
   app.quit();
 });

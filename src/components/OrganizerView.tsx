@@ -71,7 +71,7 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
     const priorityOrder = ['球種', 'Pitch Type', '結果', 'Result', '球速', '確信度', 'AI判定', 'コース', '打球方向', 'Batted Ball', 'Play', 'Tactics', 'RBI'];
     const groups = new Set<string>();
 
-    // Add prioritized keys first
+    // Add prioritized keys if they exist or as defaults
     priorityOrder.forEach(k => groups.add(k));
 
     events.forEach(ev => {
