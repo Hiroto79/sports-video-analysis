@@ -708,10 +708,25 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             const curTime = vid.currentTime;
             const timeSinceLastPitch = curTime - lastPitchTimeRef.current;
 
-            // 🎯 投球モーションピーク検知 (マウンド/ホーム領域の動き急上昇 & 物理的投球間隔10秒以上)
-            if (motionScore > 32 && (timeSinceLastPitch >= 10.5 || timeSinceLastPitch < -2.0)) {
+            // 🛡️ 1. 試合前（初球地点より前）の投球練習を自動除外
+            const isBeforeFirstPitch = firstPitchTimestamp !== null && curTime < firstPitchTimestamp;
+
+            // 🛡️ 2. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
+            const isSceneCutTransition = avgDiff > 55; // 画面全体の激変は中継ワイプ/アングル切り替え
+            if (isSceneCutTransition) {
+              setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
+            }
+
+            // 🎯 3. 本番センターカメラ投球モーションピーク検知 (マウンド/ホーム領域の動き適正範囲 & 物理的投球間隔10.5秒以上 & 試合開始後 & 非リプレイ)
+            if (
+              !isBeforeFirstPitch && 
+              !isSceneCutTransition &&
+              motionScore >= 28 && 
+              motionScore <= 60 && // リプレイの激しいカメラワークやワイプ（>60）を除外
+              (timeSinceLastPitch >= 10.5 || timeSinceLastPitch < -2.0)
+            ) {
               lastPitchTimeRef.current = curTime;
-              setCvDetectStatus('⚡ 投球モーション検知！');
+              setCvDetectStatus('⚡ 本番投球モーション検知！');
               
               const pitchTypes = ['4シーム', 'スライダー', 'カットボール', 'カーブ', 'フォーク', '2シーム'];
               const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
@@ -733,7 +748,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 video_timestamp: Number(curTime.toFixed(2))
               });
 
-              setTimeout(() => setCvDetectStatus('待機中（投球間隔監視）'), 3500);
+              setTimeout(() => setCvDetectStatus('待機中（本番センターカメラ監視中）'), 3500);
+            } else if (isBeforeFirstPitch) {
+              setCvDetectStatus('⚾ 試合前ウォームアップ（初球前のためスキップ）');
             }
           }
           prevFrameDataRef.current = new Uint8ClampedArray(data);
