@@ -152,43 +152,19 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     ];
   };
 
-  const [lineupTop, setLineupTop] = useState<LineupBatter[]>(() => {
-    const saved = localStorage.getItem('ai_receiver_lineup_top');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (_) {}
-    }
-    return generateLineupFromPlayers('A', '先攻打者');
-  });
+  // 打順・投手は常に players prop から直接生成（localStorageキャッシュ廃止→選手登録と完全リアルタイム同期）
+  const lineupTop = generateLineupFromPlayers('A', '先攻打者');
+  const lineupBottom = generateLineupFromPlayers('B', '後攻打者');
+  const [pitchersTeamA, setPitchersTeamA] = useState<PitcherEntry[]>(() =>
+    generatePitchersFromPlayers('A', initialPitcherA || '投手A')
+  );
+  const [pitchersTeamB, setPitchersTeamB] = useState<PitcherEntry[]>(() =>
+    generatePitchersFromPlayers('B', initialPitcherB || '投手B')
+  );
 
-  const [lineupBottom, setLineupBottom] = useState<LineupBatter[]>(() => {
-    const saved = localStorage.getItem('ai_receiver_lineup_bottom');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (_) {}
-    }
-    return generateLineupFromPlayers('B', '後攻打者');
-  });
-
-  const [pitchersTeamA, setPitchersTeamA] = useState<PitcherEntry[]>(() => {
-    const saved = localStorage.getItem('ai_receiver_pitchers_a');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (_) {}
-    }
-    return generatePitchersFromPlayers('A', initialPitcherA || '投手A');
-  });
-
-  const [pitchersTeamB, setPitchersTeamB] = useState<PitcherEntry[]>(() => {
-    const saved = localStorage.getItem('ai_receiver_pitchers_b');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (_) {}
-    }
-    return generatePitchersFromPlayers('B', initialPitcherB || '投手B');
-  });
-
-  // 選手登録リスト（players）が更新されたら同期
+  // 選手登録リスト（players）が更新されたら投手陣を同期
   useEffect(() => {
     if (players.length > 0) {
-      setLineupTop(generateLineupFromPlayers('A', teamAName));
-      setLineupBottom(generateLineupFromPlayers('B', teamBName));
       setPitchersTeamA(generatePitchersFromPlayers('A', initialPitcherA));
       setPitchersTeamB(generatePitchersFromPlayers('B', initialPitcherB));
     }
@@ -222,7 +198,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [cvMotionLevel, setCvMotionLevel] = useState<number>(0);
   const [cvDetectStatus, setCvDetectStatus] = useState<string>('待機中');
   const lastPitchTimeRef = useRef<number>(-999);
-  const maxProcessedVideoTimeRef = useRef<number>(0); // 🛡️ 過去巻き戻し時の再打刻を絶対遮断する未来進行ガード
   const cvCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
   const cvAnimFrameRef = useRef<number | null>(null);
@@ -461,9 +436,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     // 現在の正確な動画秒数を取得
     const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
     const pitchTime = rawPayload.video_timestamp !== undefined ? rawPayload.video_timestamp : Number(curVidTime.toFixed(2));
-    
-    // 🛡️ 最大進行時間を更新（これより過去の巻き戻しシーンでの再打刻を絶対遮断）
-    maxProcessedVideoTimeRef.current = Math.max(maxProcessedVideoTimeRef.current, pitchTime);
 
     const clipStart = Math.max(0, pitchTime - leadInSec);
     const clipEnd = pitchTime + leadOutSec;
@@ -750,31 +722,31 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               setIsInningWarmup(false);
             }
 
-            // 🛡️ 3. 既打刻＆巻き戻しシーンの完全遮断ガード (過去の時間帯での再打刻を数学的に100%遮断)
-            const isRewoundPastScene = maxProcessedVideoTimeRef.current > 0 && curTime <= (maxProcessedVideoTimeRef.current - 1.2);
-            const isAlreadyTagged = isRewoundPastScene || history.some(item => {
+            // 🛡️ 3. 既打刻シーンの重複防止ガード (±5.5秒以内に既記録タイムスタンプがある場合はスキップ)
+            const isAlreadyTagged = history.some(item => {
               if (item.video_timestamp === undefined) return false;
-              return Math.abs(curTime - item.video_timestamp) < 4.2;
+              return Math.abs(curTime - item.video_timestamp) < 5.5;
             });
 
             // 🛡️ 4. リプレイ・画面トランジション検知 (画面全体の急激なワイプ/カット切り替え)
-            const isSceneCutTransition = avgDiff > 55; // 画面全体の激変は中継ワイプ/アングル切り替え
+            const isSceneCutTransition = avgDiff > 55;
             if (isSceneCutTransition) {
               setCvDetectStatus('🎥 リプレイ/画面転換を検知 (スキップ)');
             }
 
-            // 🎯 5. 本番センターカメラ投球モーションピーク検知 (新しい未記録のシーンのみ打刻)
+            // 🎯 5. 本番センターカメラ投球モーションピーク検知
+            // 閾値を 35〜55 に絞りセカンド送球・牽制などの低強度モーションを除外
+            // cooldown を 15秒に延長して盗塁送球との混在を防止
             if (
               !isBeforeFirstPitch && 
               !isInningWarmupActive &&
               !isAlreadyTagged &&
               !isSceneCutTransition &&
-              motionScore >= 28 && 
-              motionScore <= 60 && // リプレイの激しいカメラワークやワイプ（>60）を除外
-              (timeSinceLastPitch >= 10.5 || timeSinceLastPitch < -2.0)
+              motionScore >= 35 && 
+              motionScore <= 55 &&
+              timeSinceLastPitch >= 15.0
             ) {
               lastPitchTimeRef.current = curTime;
-              maxProcessedVideoTimeRef.current = Math.max(maxProcessedVideoTimeRef.current, curTime);
               setCvDetectStatus('⚡ 本番投球モーション検知！');
               
               const pitchTypes = ['4シーム', 'スライダー', 'カットボール', 'カーブ', 'フォーク', '2シーム'];
@@ -892,21 +864,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             )}
           </button>
 
-          {players.length > 0 && (
-            <button
-              onClick={() => {
-                setLineupTop(generateLineupFromPlayers('A', teamAName));
-                setLineupBottom(generateLineupFromPlayers('B', teamBName));
-                setPitchersTeamA(generatePitchersFromPlayers('A', initialPitcherA));
-                setPitchersTeamB(generatePitchersFromPlayers('B', initialPitcherB));
-                setLastNotification('✅ 登録選手リストから打順・投手を再同期しました');
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 text-xs font-bold border border-indigo-500/40 transition-all shadow cursor-pointer active:scale-95"
-            >
-              <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span>登録選手から一括同期</span>
-            </button>
-          )}
+
 
           <button
             onClick={() => setIsSettingOpen(true)}
