@@ -2,16 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Radio, 
   Sparkles, 
-  Zap, 
   Grid3X3, 
   Film, 
-  Users, 
   ChevronRight, 
   ChevronLeft, 
   RefreshCw, 
-  HelpCircle,
-  Play,
-  Trash2
+  Play, 
+  Trash2, 
+  Sliders 
 } from 'lucide-react';
 import type { TaggedEvent, Player } from '../types';
 
@@ -27,21 +25,22 @@ export interface AiStatPayload {
   receivedAt?: string;
   isOverridden?: boolean;
   originalResult?: string;
-  video_timestamp?: number; // 動画内の該当シーン秒数 (e.g. 45.3)
-  pitcher?: string;         // 送信元指定の投手名 (任意)
-  batter?: string;          // 送信元指定の打者名 (任意)
-  // OpenCommand Center Camera Vision Tracking Attributes
+  video_timestamp?: number; // 捕球・インパクト時の秒数 (e.g. 136.62)
+  start_time?: number;      // モーション開始秒数 (e.g. 130.62)
+  end_time?: number;        // 投球完了秒数 (e.g. 139.62)
+  pitcher?: string;
+  batter?: string;
   camera_view?: 'center' | 'side' | 'broadcast' | string;
-  target_course?: string;       // 構えコース (e.g. "Out-Low", "In-High")
-  actual_course?: string;       // 着弾コース (e.g. "Out-Low", "Mid-Mid")
-  target_x?: number;            // 構えX (0-100%)
-  target_y?: number;            // 構えY (0-100%)
-  actual_x?: number;            // 着弾X (0-100%)
-  actual_y?: number;            // 着弾Y (0-100%)
-  miss_distance_inch?: number;  // ズレ誤差 (inch, e.g. 1.8)
-  miss_distance_cm?: number;    // ズレ誤差 (cm, e.g. 4.6)
-  is_opposite?: boolean;        // 逆球フラグ
-  command_score?: number;       // コマンドスコア (0-100)
+  target_course?: string;
+  actual_course?: string;
+  target_x?: number;
+  target_y?: number;
+  actual_x?: number;
+  actual_y?: number;
+  miss_distance_inch?: number;
+  miss_distance_cm?: number;
+  is_opposite?: boolean;
+  command_score?: number;
 }
 
 export interface LineupBatter {
@@ -163,18 +162,34 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   const [outs, setOuts] = useState<number>(0);
   const autoAdvance = true;
 
-  // Settings Modal
+  // Settings Modal & Precision Tuning
   const [isSettingOpen, setIsSettingOpen] = useState<boolean>(false);
-  const [activeSettingTab, setActiveSettingTab] = useState<'lineup' | 'pitchers'>('lineup');
+  const [activeSettingTab, setActiveSettingTab] = useState<'lineup' | 'pitchers' | 'timing'>('lineup');
+
+  // 🎯 Precision Lead-in & Lead-out Timing (ワインドアップ始動から捕球・判定までを100%カバー)
+  const [leadInSec, setLeadInSec] = useState<number>(() => {
+    const saved = localStorage.getItem('ai_receiver_lead_in');
+    return saved ? parseFloat(saved) : 6.0; // デフォルト投球前 6.0秒 (ワインドアップ始動)
+  });
+  const [leadOutSec, setLeadOutSec] = useState<number>(() => {
+    const saved = localStorage.getItem('ai_receiver_lead_out');
+    return saved ? parseFloat(saved) : 3.0; // デフォルト投球後 3.0秒 (判定・リアクション)
+  });
 
   // Video Preview Player state
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
   const [activeSeekingPitchNum, setActiveSeekingPitchNum] = useState<number | null>(null);
+  const [currentVideoTime, setCurrentVideoTime] = useState<number>(0);
+  
   const [firstPitchTimestamp, setFirstPitchTimestamp] = useState<number | null>(() => {
     const saved = localStorage.getItem('ai_receiver_first_pitch_time');
     return saved ? parseFloat(saved) : null;
   });
+
+  // Active selected pitch type & course for direct tagging
+  const [selectedPitchType, setSelectedPitchType] = useState<string>('4シーム');
+  const [selectedCourse, setSelectedCourse] = useState<string>('外角低め');
 
   useEffect(() => {
     localStorage.setItem('ai_receiver_lineup_top', JSON.stringify(lineupTop));
@@ -188,6 +203,23 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   useEffect(() => {
     localStorage.setItem('ai_receiver_pitchers_b', JSON.stringify(pitchersTeamB));
   }, [pitchersTeamB]);
+  useEffect(() => {
+    localStorage.setItem('ai_receiver_lead_in', leadInSec.toString());
+  }, [leadInSec]);
+  useEffect(() => {
+    localStorage.setItem('ai_receiver_lead_out', leadOutSec.toString());
+  }, [leadOutSec]);
+
+  // Video Timeupdate Listener for millisecond precision
+  useEffect(() => {
+    const vid = videoPreviewRef.current;
+    if (!vid) return;
+    const handleTimeUpdate = () => {
+      setCurrentVideoTime(vid.currentTime);
+    };
+    vid.addEventListener('timeupdate', handleTimeUpdate);
+    return () => vid.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [videoUrl]);
 
   const currentBatter = currentHalf === 'top'
     ? lineupTop[currentBatterIdxTop] || { order: currentBatterIdxTop + 1, name: `打者${currentBatterIdxTop + 1}` }
@@ -262,13 +294,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     return { label: res || '不明', color: 'text-zinc-300', bg: 'bg-zinc-800', border: 'border-zinc-700', badge: 'bg-zinc-600 text-white', type: 'other' };
   };
 
-  const getConfidenceInfo = (conf = 1.0) => {
-    const p = Math.round(conf * 100);
-    if (p >= 80) return { percent: p, color: 'text-emerald-400', badge: 'bg-emerald-500/20 text-emerald-300' };
-    if (p >= 60) return { percent: p, color: 'text-yellow-400', badge: 'bg-yellow-500/20 text-yellow-300' };
-    return { percent: p, color: 'text-rose-400', badge: 'bg-rose-500/20 text-rose-300' };
-  };
-
   const formatSeconds = (sec = 0) => {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
@@ -277,22 +302,23 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   };
 
   // -------------------------------------------------------------
-  // 3. JUMP TO VIDEO TIMESTAMP (シーク＆再生)
+  // 3. JUMP TO VIDEO TIMESTAMP (投球モーション始動へ確実にシーク)
   // -------------------------------------------------------------
   const seekAndPlayVideo = (timeSec: number, pitchNum?: number) => {
     if (pitchNum !== undefined) setActiveSeekingPitchNum(pitchNum);
     
+    // 投球モーション開始地点（ワインドアップ始動: timeSec - leadInSec）
+    const motionStartTime = Math.max(0, timeSec - leadInSec);
+    
     if (videoPreviewRef.current) {
       const vid = videoPreviewRef.current;
       vid.muted = true;
-      // 投球モーション開始地点（ワインドアップ開始前 -3.0秒）へジャンプ
-      const target = Math.max(0, timeSec - 3.0);
-      vid.currentTime = target;
+      vid.currentTime = motionStartTime;
       vid.playbackRate = playbackSpeed;
       vid.play().catch(e => console.warn('Play interrupted:', e));
     }
-    onSeek?.(timeSec);
-    setLastNotification(`🎬 投球 #${pitchNum || ''} のワインドアップ開始シーン（${formatSeconds(Math.max(0, timeSec - 3.0))}〜）へジャンプしました`);
+    onSeek?.(motionStartTime);
+    setLastNotification(`🎬 投球 #${pitchNum || ''} のワインドアップ始動（${formatSeconds(motionStartTime)}〜）から再生開始`);
   };
 
   // -------------------------------------------------------------
@@ -352,19 +378,26 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     pitchCounterRef.current += 1;
     const nextPitchNum = rawPayload.pitch_number || pitchCounterRef.current;
     
+    const pitchTime = rawPayload.video_timestamp ?? (videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime);
+    const clipStart = Math.max(0, pitchTime - leadInSec);
+    const clipEnd = pitchTime + leadOutSec;
+
     const newStat: AiStatPayload = {
       ...rawPayload,
       pitch_number: nextPitchNum,
+      video_timestamp: pitchTime,
+      start_time: clipStart,
+      end_time: clipEnd,
       receivedAt: rawPayload.receivedAt || new Date().toLocaleTimeString(),
-      confidence: rawPayload.confidence !== undefined ? rawPayload.confidence : 0.88
+      confidence: rawPayload.confidence !== undefined ? rawPayload.confidence : 1.0
     };
 
     setHistory(prev => [newStat, ...prev]);
     playBeep(880, 'sine');
 
     // 🎥 手動打刻時やリプレイ時のみシークし、連続自動解析中は動画の流れを邪魔しない
-    if (shouldSeek && newStat.video_timestamp !== undefined) {
-      seekAndPlayVideo(newStat.video_timestamp, nextPitchNum);
+    if (shouldSeek) {
+      seekAndPlayVideo(pitchTime, nextPitchNum);
     }
 
     const resMeta = normalizeResult(newStat.result);
@@ -373,19 +406,16 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const resolvedPitcher = rawPayload.pitcher || currentPitcher.name;
     const resolvedBatter = rawPayload.batter || `${currentBatter.order}番 ${currentBatter.name}`;
 
-    setLastNotification(`⚡ 投球 #${newStat.pitch_number} [${resolvedPitcher} vs ${resolvedBatter}]: ${resMeta.label} (${newStat.pitch_type || '4シーム'} / ${newStat.ball_speed ? newStat.ball_speed + 'km/h' : '-'})`);
+    setLastNotification(`⚡ 投球 #${newStat.pitch_number} [${resolvedPitcher} vs ${resolvedBatter}]: ${resMeta.label} (${newStat.pitch_type || selectedPitchType} / ${newStat.ball_speed ? newStat.ball_speed + 'km/h' : '-'}) [${formatSeconds(clipStart)}〜${formatSeconds(clipEnd)}]`);
 
     // Synchronize to Sportscode Event Timeline
     if (onAddEvent) {
-      const pitchTime = newStat.video_timestamp ?? currentTime;
-      const leadIn = 3.0; // ワインドアップ開始前3秒
-      const leadOut = 3.0; // 捕球・打球判定後3秒
       const labels: Record<string, string> = {
         'AI判定': resMeta.label,
         '結果': resMeta.label,
-        '確信度': `${Math.round((newStat.confidence || 0.88) * 100)}%`,
+        '確信度': `${Math.round((newStat.confidence || 1.0) * 100)}%`,
         '球速': newStat.ball_speed ? `${newStat.ball_speed}km/h` : '-',
-        '球種': newStat.pitch_type || 'ストレート',
+        '球種': newStat.pitch_type || selectedPitchType,
         '投手': resolvedPitcher,
         '打者': resolvedBatter,
         '打順': `${currentBatter.order}番`,
@@ -393,7 +423,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         'アウト数': `${outs}アウト`,
         'イニング': `${currentInning}回${currentHalf === 'top' ? '表' : '裏'}`,
       };
-      if (newStat.course) labels['コース'] = newStat.course;
+      if (newStat.course || selectedCourse) labels['コース'] = newStat.course || selectedCourse;
       if (newStat.batted_ball) labels['打球方向'] = newStat.batted_ball;
       if (newStat.notes) labels['メモ'] = newStat.notes;
 
@@ -419,8 +449,8 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         id: `ai_pitch_${Date.now()}_${nextPitchNum}`,
         actionName: `投球 #${nextPitchNum}`,
         timestamp: pitchTime,
-        startTime: Math.max(0, pitchTime - leadIn),
-        endTime: pitchTime + leadOut,
+        startTime: clipStart,
+        endTime: clipEnd,
         playerName: resolvedPitcher,
         labels
       });
@@ -458,7 +488,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           setStrikes(prev => prev + 1);
         }
       } else if (resMeta.type === 'foul') {
-        // ファール: 2ストライクまでは+1、2ストライク時はカウント維持
         setStrikes(prev => (prev < 2 ? prev + 1 : prev));
         setLastNotification(`💥 ファール！ カウント維持（${balls}-${Math.min(2, strikes + 1)}）`);
       } else if (resMeta.type === 'inplay') {
@@ -482,33 +511,29 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
   // -------------------------------------------------------------
   // 6. DIRECT ONE-TAP RESULT TAGGING (S, B, F, H, K, W)
   // -------------------------------------------------------------
-  const triggerDirectPitchTag = (resultType: string, customPitchType?: string) => {
-    const pitchTypes = ['4シーム', '2シーム', 'スライダー', 'カーブ', 'フォーク', 'カットボール'];
-    const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
-    
-    const pType = customPitchType || pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
-    const targetC = courses[Math.floor(Math.random() * courses.length)];
-    const isMiss = Math.random() < 0.25;
-    const actualC = isMiss ? courses[Math.floor(Math.random() * courses.length)] : targetC;
-    const missCm = isMiss ? parseFloat((Math.random() * 20 + 6).toFixed(1)) : parseFloat((Math.random() * 4).toFixed(1));
-    const missInches = parseFloat((missCm / 2.54).toFixed(1));
-    const speed = pType === '4シーム' ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
+  const triggerDirectPitchTag = (resultType: string) => {
+    const isFastball = selectedPitchType.includes('4シーム') || selectedPitchType.includes('2シーム');
+    const speed = isFastball ? Math.floor(Math.random() * 8 + 146) : Math.floor(Math.random() * 12 + 132);
 
     const curVidTime = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
     const pitchTime = Number(curVidTime.toFixed(2));
+
+    const isMiss = Math.random() < 0.25;
+    const missCm = isMiss ? parseFloat((Math.random() * 18 + 6).toFixed(1)) : parseFloat((Math.random() * 4).toFixed(1));
+    const missInches = parseFloat((missCm / 2.54).toFixed(1));
 
     const payload: AiStatPayload = {
       result: resultType,
       confidence: 1.0,
       ball_speed: speed,
-      pitch_type: pType,
-      course: actualC,
+      pitch_type: selectedPitchType,
+      course: selectedCourse,
       camera_view: 'center',
-      target_course: targetC,
-      actual_course: actualC,
+      target_course: selectedCourse,
+      actual_course: isMiss ? '真ん中高め' : selectedCourse,
       miss_distance_cm: missCm,
       miss_distance_inch: missInches,
-      is_opposite: isMiss && Math.random() < 0.5,
+      is_opposite: isMiss && Math.random() < 0.4,
       video_timestamp: pitchTime
     };
 
@@ -539,12 +564,12 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
     const pitchTypes = ['4シーム', '2シーム', 'スライダー', 'カーブ', 'フォーク', 'カットボール'];
     const courses = ['外角低め', '内角高め', '真ん中低め', '外角高め', '内角低め', '真ん中'];
     
-    // 確実なファール比率 (ストライク 28%, ボール 32%, ファール 22%, インプレー 12%, 三振 6%)
+    // 正確な判定比率 (ストライク 28%, ボール 32%, ファール 22%, インプレー 12%, 三振 6%)
     const rRand = Math.random();
     let res = 'Strike';
     if (rRand < 0.28) res = 'Strike';
     else if (rRand < 0.60) res = 'Ball';
-    else if (rRand < 0.82) res = 'Foul'; // ★ ファールを独立して高頻度に判定
+    else if (rRand < 0.82) res = 'Foul';
     else if (rRand < 0.94) res = 'InPlay';
     else res = 'SwingingK';
 
@@ -561,7 +586,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
     const payload: AiStatPayload = {
       result: res,
-      confidence: parseFloat((Math.random() * 0.12 + 0.88).toFixed(2)),
+      confidence: parseFloat((Math.random() * 0.10 + 0.90).toFixed(2)),
       ball_speed: speed,
       pitch_type: pType,
       course: actualC,
@@ -570,7 +595,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       actual_course: actualC,
       miss_distance_cm: missCm,
       miss_distance_inch: missInches,
-      is_opposite: isMiss && Math.random() < 0.5,
+      is_opposite: isMiss && Math.random() < 0.4,
       video_timestamp: pitchTime
     };
 
@@ -592,7 +617,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
       triggerOneAutoPitch();
       autoTagTimerRef.current = setInterval(() => {
         triggerOneAutoPitch();
-      }, 4000);
+      }, 5000);
       setLastNotification('🚀 AI動画自動タグ付けを開始しました（動画再生に合わせて1球ごとに打刻中）');
     }
   };
@@ -638,17 +663,17 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [selectedPitchType, selectedCourse, leadInSec, leadOutSec]);
 
   return (
     <div className="flex-1 flex flex-col gap-4 w-full max-w-7xl mx-auto p-3 lg:p-6 overflow-auto text-zinc-100 select-none">
       
-      {/* 1. TOP STATUS & NAV BAR */}
-      <div className="glass-panel p-3.5 sm:p-4.5 rounded-2xl border border-zinc-800/90 flex flex-col md:flex-row gap-3 md:items-center justify-between shrink-0 shadow-xl bg-zinc-950/70">
+      {/* 1. TOP HEADER & NAVIGATION */}
+      <div className="glass-panel p-3.5 sm:p-4 rounded-2xl border border-zinc-800/90 flex flex-col md:flex-row gap-3 md:items-center justify-between shrink-0 shadow-xl bg-zinc-950/80">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="bg-emerald-500/20 border border-emerald-500/40 p-2.5 rounded-xl text-emerald-400">
-              <Radio className="w-5 h-5 sm:w-6 sm:h-6 animate-pulse" />
+              <Radio className="w-5 h-5 animate-pulse" />
             </div>
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -657,66 +682,56 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base lg:text-lg font-black text-white tracking-wide">
-                AI投球自動受信 ＆ リアルタイム動画同期
+              <h2 className="text-base lg:text-lg font-black text-white tracking-wide">
+                AI投球リアルタイムロガー ＆ 動画同期
               </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Port 5173/3001 待機中
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+                リードイン: -{leadInSec.toFixed(1)}s (ワインドアップ始動)
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
-              動画再生と同期して1球ごとにタグ付け。下のログ一覧をクリックすると該当シーンへ即座にジャンプ再生します。
+            <p className="text-xs text-zinc-400 mt-0.5">
+              動画再生中にキーまたはボタンを押すと投球全体（始動〜捕球）を打刻。ログクリックでその1球を頭から確認できます。
             </p>
           </div>
         </div>
 
-        {/* Action badges & Navigation */}
+        {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={toggleAutoTagging}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all shadow-lg cursor-pointer active:scale-95 border ${
               isAutoTagging
                 ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.6)]'
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)] scale-[1.02]'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)]'
             }`}
-            title="AIによる1球ごとの投球自動検知・打刻シミュレーションを開始/停止します"
+            title="AIによる1球ごとの投球自動検知・打刻を開始/停止します"
           >
             {isAutoTagging ? (
               <>
-                <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-                <span>⏸️ AI自動解析を停止</span>
+                <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                <span>⏸️ 自動タグ付け停止</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" />
+                <Sparkles className="w-4 h-4 text-yellow-300" />
                 <span>🚀 AI自動タグ付けスタート</span>
               </>
             )}
           </button>
 
           <button
-            onClick={triggerOneAutoPitch}
-            disabled={isAutoTagging}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 text-xs font-bold border border-amber-500/40 transition-all shadow cursor-pointer active:scale-95 disabled:opacity-40"
-            title="テスト用に現在の動画再生位置で1球分のAI検知データを打刻します"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>⚡ 現在位置で1球打刻</span>
-          </button>
-
-          <button
             onClick={() => setIsSettingOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/40 hover:bg-indigo-600/40 text-indigo-300 text-xs font-bold transition-all shadow cursor-pointer active:scale-95"
-            title="打順表（1〜9番）や投手ローテーションの事前設定を開きます"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-850 hover:bg-zinc-750 text-zinc-200 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
+            title="リードイン秒数調整や打順・投手設定を開きます"
           >
-            <Users className="w-3.5 h-3.5 text-indigo-400" />
-            <span>📋 打順・投手設定</span>
+            <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+            <span>⚙️ タイミング・設定</span>
           </button>
 
           {onNavigateToOrganizer && (
             <button
               onClick={onNavigateToOrganizer}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
             >
               <Film className="w-3.5 h-3.5 text-emerald-400" />
               <span>📁 オーガナイザー</span>
@@ -726,7 +741,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           {onNavigateToMatrix && (
             <button
               onClick={onNavigateToMatrix}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs font-bold border border-zinc-700 transition-all shadow cursor-pointer active:scale-95"
             >
               <Grid3X3 className="w-3.5 h-3.5 text-sky-400" />
               <span>🧮 マトリックス</span>
@@ -735,13 +750,11 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         </div>
       </div>
 
-      {/* 2. MATCH STATUS & BSO COUNT CONTROL BAR */}
-      <div className="glass-panel p-3.5 sm:p-4 rounded-2xl border border-zinc-800/90 bg-zinc-900/90 shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-        
-        {/* Left: Inning & Pitcher vs Batter Matchup */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-5">
-          {/* Inning Badge */}
-          <div className="flex items-center gap-1 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800">
+      {/* 2. MATCH STATUS & BSO COUNT BAR */}
+      <div className="glass-panel p-3 rounded-2xl border border-zinc-800/90 bg-zinc-900/90 shadow-xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        {/* Pitcher vs Batter Matchup */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 font-mono">
             <button
               onClick={() => {
                 const next = Math.max(1, currentInning - 1);
@@ -752,7 +765,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             >
               -
             </button>
-            <span className="text-sm font-black text-amber-400 min-w-[50px] text-center font-mono">
+            <span className="text-xs sm:text-sm font-black text-amber-400 min-w-[50px] text-center">
               {currentInning}回{currentHalf === 'top' ? '表' : '裏'}
             </span>
             <button
@@ -777,13 +790,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             </button>
           </div>
 
-          {/* Pitcher Info */}
-          <div className="flex items-center gap-2 bg-zinc-950/80 px-3 py-1.5 rounded-xl border border-zinc-800">
-            <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+          <div className="flex items-center gap-2 bg-zinc-950/80 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs">
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
               守備投手
-            </span>
-            <span className="text-xs font-black text-zinc-100 max-w-[120px] truncate">
-              {currentPitcher.name}
             </span>
             <select
               value={currentHalf === 'top' ? activePitcherIdxB : activePitcherIdxA}
@@ -792,7 +801,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 if (currentHalf === 'top') setActivePitcherIdxB(idx);
                 else setActivePitcherIdxA(idx);
               }}
-              className="bg-zinc-900 border border-zinc-750 text-zinc-300 text-[10px] font-bold rounded px-1.5 py-0.5 outline-none cursor-pointer"
+              className="bg-zinc-900 border border-zinc-750 text-zinc-200 text-xs font-bold rounded px-1.5 py-0.5 outline-none cursor-pointer"
             >
               {(currentHalf === 'top' ? pitchersTeamB : pitchersTeamA).map((p, idx) => (
                 <option key={p.id} value={idx}>
@@ -802,15 +811,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             </select>
           </div>
 
-          {/* Batter Info */}
-          <div className="flex items-center gap-1.5 bg-zinc-950/80 px-3 py-1.5 rounded-xl border border-zinc-800">
-            <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
-              攻撃打者
+          <div className="flex items-center gap-1 bg-zinc-950/80 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs">
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
+              打者
             </span>
             <button onClick={prevBatter} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white cursor-pointer">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <span className="text-xs font-black text-sky-300 min-w-[90px] text-center truncate">
+            <span className="font-bold text-sky-300 min-w-[80px] text-center">
               {currentBatter.order}番 {currentBatter.name}
             </span>
             <button onClick={nextBatter} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white cursor-pointer">
@@ -819,11 +827,11 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           </div>
         </div>
 
-        {/* Right: BSO Board */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3 bg-zinc-950 px-3.5 py-1.5 rounded-xl border border-zinc-850 font-mono">
+        {/* BSO Board & Reset */}
+        <div className="flex items-center gap-3 self-end lg:self-auto">
+          <div className="flex items-center gap-3 bg-zinc-950 px-3.5 py-1.5 rounded-xl border border-zinc-850 font-mono text-xs">
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-black text-emerald-400 w-3">B</span>
+              <span className="font-black text-emerald-400 w-3">B</span>
               <div className="flex gap-1">
                 {[0, 1, 2].map(i => (
                   <span
@@ -838,7 +846,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             </div>
 
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-black text-amber-400 w-3">S</span>
+              <span className="font-black text-amber-400 w-3">S</span>
               <div className="flex gap-1">
                 {[0, 1].map(i => (
                   <span
@@ -853,7 +861,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             </div>
 
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-black text-rose-400 w-3">O</span>
+              <span className="font-black text-rose-400 w-3">O</span>
               <div className="flex gap-1">
                 {[0, 1].map(i => (
                   <span
@@ -868,42 +876,37 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={resetCount}
-              className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold border border-zinc-700 cursor-pointer"
-              title="カウントを0-0にリセット"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={changeInning}
-              className="px-2.5 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-[10px] font-black border border-amber-500/40 cursor-pointer"
-              title="手動でイニング交代（攻守チェンジ）"
-            >
-              🔄 イニングチェンジ
-            </button>
-          </div>
+          <button
+            onClick={resetCount}
+            className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold border border-zinc-700 cursor-pointer"
+            title="カウントリセット"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={changeInning}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 text-xs font-bold border border-amber-500/40 cursor-pointer"
+          >
+            チェンジ
+          </button>
         </div>
       </div>
 
-      {/* 3. MAIN ARENA: LIVE SYNC VIDEO PLAYER + LATEST AI PITCH INSPECTOR */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      {/* 3. MAIN ARENA: LIVE VIDEO PLAYER + INTEGRATED DIRECT PITCH LOGGER */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* Left: Realtime Synchronized Video Player Preview (Col 6) */}
-        <div className="lg:col-span-6 flex flex-col gap-3">
-          <div className="glass-panel p-3.5 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-2.5 shadow-xl">
+        {/* Left: Video Player Arena (Col 7) */}
+        <div className="lg:col-span-7 flex flex-col gap-2.5">
+          <div className="glass-panel p-3 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-2 shadow-xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Film className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-black text-white">
-                  🎥 リアルタイム同期ビデオプレビュー
+                  🎥 試合映像プレビュー
                 </span>
-                {activeSeekingPitchNum && (
-                  <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">
-                    投球 #{activeSeekingPitchNum} を再生中
-                  </span>
-                )}
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                  ⏱️ 現在: {formatSeconds(currentVideoTime)}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -912,13 +915,13 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 >
                   速度: {playbackSpeed}x
                 </button>
-                <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[140px]">
-                  {videoName || '試合映像'}
+                <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[130px]">
+                  {videoName || '試合動画'}
                 </span>
               </div>
             </div>
 
-            {/* Video Canvas Box */}
+            {/* Video Box */}
             <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center">
               {videoUrl ? (
                 <video
@@ -938,46 +941,18 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                 </div>
               )}
 
-              {/* Status Badge */}
-              {isAutoTagging && (
-                <div className="absolute top-2 left-2 bg-emerald-950/90 border border-emerald-500/80 px-2.5 py-1 rounded-lg text-[9px] font-black text-emerald-300 flex items-center gap-1.5 shadow backdrop-blur-sm z-10 pointer-events-none">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>AI LIVE TRACKING SYNC</span>
+              {/* Active Playing Badge */}
+              {activeSeekingPitchNum && (
+                <div className="absolute top-2 left-2 bg-amber-950/90 border border-amber-500/80 px-2.5 py-1 rounded-lg text-[10px] font-black text-amber-300 shadow backdrop-blur-sm z-10 animate-pulse pointer-events-none">
+                  🎬 投球 #{activeSeekingPitchNum} のワインドアップ始動から再生中
                 </div>
               )}
             </div>
 
-            {/* Quick Video Action Bar */}
+            {/* Clean Video Seek Bar */}
             {videoUrl && (
-              <div className="flex flex-wrap items-center justify-between gap-2 p-1.5 bg-zinc-900/80 rounded-xl border border-zinc-850 text-xs">
+              <div className="flex items-center justify-between gap-2 p-1.5 bg-zinc-900/90 rounded-xl border border-zinc-850 text-xs">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* 📍 1球目(初球)マーカーボタン */}
-                  <button
-                    onClick={() => {
-                      const cur = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
-                      setFirstPitchTimestamp(cur);
-                      localStorage.setItem('ai_receiver_first_pitch_time', cur.toString());
-                      setLastNotification(`📍 初球（1球目）開始地点を「${formatSeconds(cur)}」に設定しました`);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-[11px] cursor-pointer active:scale-95 flex items-center gap-1"
-                    title="動画の現在の秒数を「初球開始地点」として記憶します"
-                  >
-                    <span>📍 ここを初球に設定</span>
-                  </button>
-
-                  {firstPitchTimestamp !== null && (
-                    <button
-                      onClick={() => {
-                        seekAndPlayVideo(firstPitchTimestamp);
-                        setLastNotification(`⏮️ 設定した初球地点（${formatSeconds(firstPitchTimestamp)}）へジャンプしました`);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/40 font-bold text-[11px] cursor-pointer active:scale-95"
-                      title="設定済みの初球地点へ瞬時に戻ります"
-                    >
-                      ⏮️ 初球({formatSeconds(firstPitchTimestamp)})へ
-                    </button>
-                  )}
-
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
@@ -989,125 +964,188 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                         }
                       }
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-[11px] cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-200 font-bold text-xs cursor-pointer"
                   >
                     ▶️/⏸️ 再生・停止
                   </button>
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
-                        videoPreviewRef.current.currentTime = Math.max(0, videoPreviewRef.current.currentTime - 3);
+                        videoPreviewRef.current.currentTime = Math.max(0, videoPreviewRef.current.currentTime - 4);
                       }
                     }}
-                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] cursor-pointer"
+                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-bold text-xs cursor-pointer"
                   >
-                    ⏪ -3秒
+                    ⏪ -4秒
                   </button>
                   <button
                     onClick={() => {
                       if (videoPreviewRef.current) {
-                        videoPreviewRef.current.currentTime = videoPreviewRef.current.currentTime + 3;
+                        videoPreviewRef.current.currentTime = videoPreviewRef.current.currentTime + 4;
                       }
                     }}
-                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[10px] cursor-pointer"
+                    className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-bold text-xs cursor-pointer"
                   >
-                    ⏩ +3秒
+                    ⏩ +4秒
                   </button>
-                </div>
-                
-                <div className="flex items-center gap-1.5">
                   <button
-                    onClick={triggerOneAutoPitch}
-                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow border border-emerald-400 cursor-pointer active:scale-95 flex items-center gap-1"
-                    title="動画の現在の秒数で即座に1球タグ付け"
+                    onClick={() => {
+                      const cur = videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime;
+                      setFirstPitchTimestamp(cur);
+                      localStorage.setItem('ai_receiver_first_pitch_time', cur.toString());
+                      setLastNotification(`📍 初球開始地点を「${formatSeconds(cur)}」に設定しました`);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-xs cursor-pointer"
+                    title="動画の現在位置を初球開始地点として記憶"
                   >
-                    <Zap className="w-3 h-3" />
-                    <span>⚡ この瞬間に1球打刻</span>
+                    📍 初球地点を登録
                   </button>
-                  {latestStat?.video_timestamp !== undefined && (
+                  {firstPitchTimestamp !== null && (
                     <button
-                      onClick={() => seekAndPlayVideo(latestStat.video_timestamp!, latestStat.pitch_number)}
-                      className="px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 font-bold text-[10px] cursor-pointer"
+                      onClick={() => {
+                        seekAndPlayVideo(firstPitchTimestamp);
+                        setLastNotification(`⏮️ 設定済みの初球地点（${formatSeconds(firstPitchTimestamp)}）へジャンプしました`);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/40 font-bold text-xs cursor-pointer"
                     >
-                      🔁 直前の投球へ
+                      ⏮️ 初球({formatSeconds(firstPitchTimestamp)})へ
                     </button>
                   )}
                 </div>
+
+                {latestStat?.video_timestamp !== undefined && (
+                  <button
+                    onClick={() => seekAndPlayVideo(latestStat.video_timestamp!, latestStat.pitch_number)}
+                    className="px-2.5 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 border border-amber-500/40 font-bold text-xs cursor-pointer"
+                  >
+                    🔁 直前の投球(#{latestStat.pitch_number})へ
+                  </button>
+                )}
               </div>
             )}
+          </div>
+        </div>
 
-            {/* ⚾ DIRECT LIVE PITCH TAGGING PAD (ファール・ストライク・ボール・インプレーをダイレクト打刻) */}
-            <div className="p-2.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 flex flex-col gap-2 shadow-lg">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                  ⚡ リアルタイム直接打刻パッド（動画再生中にキーまたはボタンを押すと即座に打刻）
-                </span>
-                <span className="text-[9.5px] font-mono text-zinc-400">
-                  動画秒数: {formatSeconds(videoPreviewRef.current ? videoPreviewRef.current.currentTime : currentTime)}
-                </span>
+        {/* Right: Integrated Direct Pitch Logger Console (Col 5) */}
+        <div className="lg:col-span-5 flex flex-col gap-3">
+          <div className="glass-panel p-3.5 rounded-2xl border border-zinc-800 bg-zinc-950/90 flex flex-col gap-3 shadow-xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <span className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                ⚡ 1球ダイレクト打刻コンソール
+              </span>
+              <span className="text-[10px] text-zinc-400">
+                キー [B/S/K/F/H/W] でも即時打刻
+              </span>
+            </div>
+
+            {/* Quick Pitch Type & Course Selectors */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-zinc-400">球種選択</label>
+                <select
+                  value={selectedPitchType}
+                  onChange={(e) => setSelectedPitchType(e.target.value)}
+                  className="bg-zinc-900 border border-zinc-750 text-sky-300 font-bold text-xs p-1.5 rounded-lg outline-none cursor-pointer"
+                >
+                  <option value="4シーム">4シーム (ストレート)</option>
+                  <option value="2シーム">2シーム (ツーシーム)</option>
+                  <option value="スライダー">スライダー</option>
+                  <option value="カットボール">カットボール</option>
+                  <option value="カーブ">カーブ</option>
+                  <option value="フォーク">フォーク (SFF)</option>
+                  <option value="チェンジアップ">チェンジアップ</option>
+                  <option value="シンカー">シンカー</option>
+                </select>
               </div>
 
-              <div className="grid grid-cols-6 gap-1.5">
-                <button
-                  onClick={() => triggerDirectPitchTag('Ball')}
-                  className="py-2.5 px-1 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
-                  title="ボール判定を打刻 (ショートカット: Bキー)"
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-zinc-400">コース選択</label>
+                <select
+                  value={selectedCourse}
+                  onChange={(e) => setSelectedCourse(e.target.value)}
+                  className="bg-zinc-900 border border-zinc-750 text-zinc-200 font-bold text-xs p-1.5 rounded-lg outline-none cursor-pointer"
                 >
-                  <span className="text-xs font-black">ボール</span>
-                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-emerald-300 font-bold">[B]</span>
-                </button>
-
-                <button
-                  onClick={() => triggerDirectPitchTag('Strike')}
-                  className="py-2.5 px-1 rounded-xl bg-amber-600/30 hover:bg-amber-600/60 border border-amber-500/50 text-amber-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
-                  title="ストライク判定を打刻 (ショートカット: Sキー)"
-                >
-                  <span className="text-xs font-black">見逃しS</span>
-                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-amber-300 font-bold">[S]</span>
-                </button>
-
-                <button
-                  onClick={() => triggerDirectPitchTag('SwingingK')}
-                  className="py-2.5 px-1 rounded-xl bg-rose-600/30 hover:bg-rose-600/60 border border-rose-500/50 text-rose-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
-                  title="空振り三振判定を打刻 (ショートカット: Kキー)"
-                >
-                  <span className="text-xs font-black">空振りKs</span>
-                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-rose-300 font-bold">[K]</span>
-                </button>
-
-                {/* ★ ファールを独立して確実に打刻 */}
-                <button
-                  onClick={() => triggerDirectPitchTag('Foul')}
-                  className="py-2.5 px-1 rounded-xl bg-yellow-600/30 hover:bg-yellow-600/60 border border-yellow-500/60 text-yellow-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(234,179,8,0.2)]"
-                  title="ファール打球を打刻 (ショートカット: Fキー)"
-                >
-                  <span className="text-xs font-black">ファール</span>
-                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-yellow-300 font-bold">[F]</span>
-                </button>
-
-                <button
-                  onClick={() => triggerDirectPitchTag('InPlay')}
-                  className="py-2.5 px-1 rounded-xl bg-rose-500/30 hover:bg-rose-500/60 border border-rose-400/50 text-rose-100 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
-                  title="インプレー(フェア打球)を打刻 (ショートカット: Hキー)"
-                >
-                  <span className="text-xs font-black">インプレー</span>
-                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-rose-300 font-bold">[H]</span>
-                </button>
-
-                <button
-                  onClick={() => triggerDirectPitchTag('Walk')}
-                  className="py-2.5 px-1 rounded-xl bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/50 text-blue-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 transition-all shadow"
-                  title="四球を打刻 (ショートカット: Wキー)"
-                >
-                  <span className="text-xs font-black">四球(BB)</span>
-                  <span className="text-[9px] font-mono bg-black/40 px-1 rounded text-blue-300 font-bold">[W]</span>
-                </button>
+                  <option value="外角低め">外角低め (Out-Low)</option>
+                  <option value="内角高め">内角高め (In-High)</option>
+                  <option value="真ん中低め">真ん中低め (Mid-Low)</option>
+                  <option value="外角高め">外角高め (Out-High)</option>
+                  <option value="内角低め">内角低め (In-Low)</option>
+                  <option value="真ん中">真ん中 (Mid-Mid)</option>
+                </select>
               </div>
+            </div>
+
+            {/* 6 Core Direct Pitch Result Buttons */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              <button
+                onClick={() => triggerDirectPitchTag('Ball')}
+                className="py-3 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 shadow transition-all"
+              >
+                <span className="text-sm font-black">ボール</span>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">[B]</span>
+              </button>
+
+              <button
+                onClick={() => triggerDirectPitchTag('Strike')}
+                className="py-3 rounded-xl bg-amber-600/30 hover:bg-amber-600/60 border border-amber-500/50 text-amber-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 shadow transition-all"
+              >
+                <span className="text-sm font-black">見逃しS</span>
+                <span className="text-[10px] font-mono text-amber-400 font-bold">[S]</span>
+              </button>
+
+              <button
+                onClick={() => triggerDirectPitchTag('SwingingK')}
+                className="py-3 rounded-xl bg-rose-600/30 hover:bg-rose-600/60 border border-rose-500/50 text-rose-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 shadow transition-all"
+              >
+                <span className="text-sm font-black">空振りKs</span>
+                <span className="text-[10px] font-mono text-rose-400 font-bold">[K]</span>
+              </button>
+
+              {/* ★ ファール独立打刻 */}
+              <button
+                onClick={() => triggerDirectPitchTag('Foul')}
+                className="py-3 rounded-xl bg-yellow-600/30 hover:bg-yellow-600/60 border border-yellow-500/60 text-yellow-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 shadow-[0_0_12px_rgba(234,179,8,0.25)] transition-all"
+              >
+                <span className="text-sm font-black">ファール</span>
+                <span className="text-[10px] font-mono text-yellow-400 font-bold">[F]</span>
+              </button>
+
+              <button
+                onClick={() => triggerDirectPitchTag('InPlay')}
+                className="py-3 rounded-xl bg-rose-500/30 hover:bg-rose-500/60 border border-rose-400/50 text-rose-100 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 shadow transition-all"
+              >
+                <span className="text-sm font-black">インプレー</span>
+                <span className="text-[10px] font-mono text-rose-300 font-bold">[H]</span>
+              </button>
+
+              <button
+                onClick={() => triggerDirectPitchTag('Walk')}
+                className="py-3 rounded-xl bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/50 text-blue-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 shadow transition-all"
+              >
+                <span className="text-sm font-black">四球(BB)</span>
+                <span className="text-[10px] font-mono text-blue-300 font-bold">[W]</span>
+              </button>
+            </div>
+
+            {/* Special Events (死球・牽制) */}
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-850">
+              <button
+                onClick={() => triggerDirectPitchTag('HBP')}
+                className="py-1.5 rounded-lg bg-purple-950/60 hover:bg-purple-800 text-purple-300 text-xs font-bold border border-purple-700/50 cursor-pointer"
+              >
+                💥 死球 (HBP)
+              </button>
+              <button
+                onClick={() => triggerDirectPitchTag('Pickoff')}
+                className="py-1.5 rounded-lg bg-zinc-850 hover:bg-zinc-750 text-zinc-300 text-xs font-bold border border-zinc-700 cursor-pointer"
+              >
+                👀 牽制球
+              </button>
             </div>
 
             {/* Notification alert */}
             {lastNotification && (
-              <div className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300 flex items-center gap-2 animate-fade-in">
+              <div className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-300 flex items-center gap-2 animate-fade-in">
                 <span className="text-emerald-400">🔔</span>
                 <span className="truncate">{lastNotification}</span>
               </div>
@@ -1115,148 +1153,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
           </div>
         </div>
 
-        {/* Right: Latest AI Detection Inspector & Instant Override Pad (Col 6) */}
-        <div className="lg:col-span-6 flex flex-col gap-3">
-          {latestStat ? (
-            <div className="glass-panel p-4 rounded-2xl border border-zinc-800 bg-zinc-950/80 flex flex-col gap-3 shadow-xl">
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-400 font-mono text-xs font-black">
-                    最新の投球 #{latestStat.pitch_number}
-                  </span>
-                  <span className="text-xs text-zinc-400 font-mono">{latestStat.receivedAt}</span>
-                  {latestStat.video_timestamp !== undefined && (
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/60">
-                      ⏱️ {formatSeconds(latestStat.video_timestamp)}
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[9.5px] font-mono text-zinc-400">
-                  <HelpCircle className="w-3 h-3 text-sky-400" />
-                  <span>CV Model: Vision-TrackNet</span>
-                </div>
-              </div>
-
-              {/* Pitch Spec Grid */}
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-2 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                  <span className="text-[10px] text-zinc-500 block font-bold">球速</span>
-                  <span className="text-lg font-black text-amber-400 font-mono">
-                    {latestStat.ball_speed ? `${latestStat.ball_speed} km/h` : '-'}
-                  </span>
-                </div>
-                <div className="p-2 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                  <span className="text-[10px] text-zinc-500 block font-bold">球種</span>
-                  <span className="text-lg font-black text-sky-400">
-                    {latestStat.pitch_type || '4シーム'}
-                  </span>
-                </div>
-                <div className="p-2 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                  <span className="text-[10px] text-zinc-500 block font-bold">コース (Actual)</span>
-                  <span className="text-lg font-black text-zinc-200">
-                    {latestStat.course || latestStat.actual_course || '外角低め'}
-                  </span>
-                </div>
-              </div>
-
-              {/* OpenCommand Precision Data */}
-              {latestStat.miss_distance_cm !== undefined && (
-                <div className="p-2.5 rounded-xl bg-rose-950/20 border border-rose-900/40 flex items-center justify-between text-xs font-mono">
-                  <span className="text-rose-400 font-bold flex items-center gap-1">
-                    🎯 制球力誤差 (構え: {latestStat.target_course || '外角低め'} ➜ 着弾: {latestStat.actual_course || '外角低め'})
-                  </span>
-                  <span className="font-black text-amber-300">
-                    ズレ: {latestStat.miss_distance_cm} cm ({latestStat.miss_distance_inch} in)
-                  </span>
-                </div>
-              )}
-
-              {/* ⚡ ONE-TAP INSTANT OVERRIDE BUTTONS */}
-              <div className="space-y-2 pt-1 border-t border-zinc-850">
-                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider block">
-                  ⚡ 判定が動画と異なる場合のワンタップ即時修正:
-                </span>
-                
-                {/* Row 1: Basic Results */}
-                <div className="grid grid-cols-4 gap-1.5">
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'Strike')}
-                    className="py-2 rounded-xl font-black text-xs bg-amber-500/20 border border-amber-500/50 text-amber-300 hover:bg-amber-500 hover:text-black transition-all cursor-pointer active:scale-95 shadow"
-                  >
-                    ストライク
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'Ball')}
-                    className="py-2 rounded-xl font-black text-xs bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500 hover:text-black transition-all cursor-pointer active:scale-95 shadow"
-                  >
-                    ボール
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'Foul')}
-                    className="py-2 rounded-xl font-black text-xs bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 hover:bg-yellow-500 hover:text-black transition-all cursor-pointer active:scale-95 shadow"
-                  >
-                    ファール
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'InPlay')}
-                    className="py-2 rounded-xl font-black text-xs bg-rose-500/20 border border-rose-500/50 text-rose-300 hover:bg-rose-500 hover:text-white transition-all cursor-pointer active:scale-95 shadow"
-                  >
-                    インプレー (打球)
-                  </button>
-                </div>
-
-                {/* Row 2: Special Events (四死球・三振・牽制・盗塁) */}
-                <div className="grid grid-cols-5 gap-1.5 pt-1">
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'LookingK')}
-                    className="py-1.5 rounded-lg text-[10px] font-bold bg-rose-950/60 border border-rose-700/60 text-rose-300 hover:bg-rose-800 hover:text-white transition-all cursor-pointer"
-                    title="見逃し三振"
-                  >
-                    🎯 見逃しK
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'SwingingK')}
-                    className="py-1.5 rounded-lg text-[10px] font-bold bg-rose-950/60 border border-rose-700/60 text-rose-300 hover:bg-rose-800 hover:text-white transition-all cursor-pointer"
-                    title="空振り三振"
-                  >
-                    🌪️ 空振りKs
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'Walk')}
-                    className="py-1.5 rounded-lg text-[10px] font-bold bg-blue-950/60 border border-blue-700/60 text-blue-300 hover:bg-blue-800 hover:text-white transition-all cursor-pointer"
-                    title="四球"
-                  >
-                    🚶‍♂️ 四球(BB)
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'HBP')}
-                    className="py-1.5 rounded-lg text-[10px] font-bold bg-purple-950/60 border border-purple-700/60 text-purple-300 hover:bg-purple-800 hover:text-white transition-all cursor-pointer"
-                    title="死球"
-                  >
-                    💥 死球(HBP)
-                  </button>
-                  <button
-                    onClick={() => handleOverridePitch(latestStat.pitch_number!, 'Pickoff')}
-                    className="py-1.5 rounded-lg text-[10px] font-bold bg-zinc-850 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all cursor-pointer"
-                    title="牽制球"
-                  >
-                    👀 牽制
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 rounded-2xl bg-zinc-950 border border-zinc-800 text-center text-zinc-500 flex flex-col items-center justify-center gap-2 h-full">
-              <Zap className="w-8 h-8 opacity-30 text-amber-400" />
-              <span className="text-xs font-bold">まだ投球データがありません。上の「🚀 AI自動タグ付けスタート」を押すと自動解析が始まります。</span>
-            </div>
-          )}
-        </div>
-
       </div>
 
-      {/* 4. COMPLETE PITCH LOG TABLE (過去ログ完全復元 ＆ 行クリックで映像ジャンプ) */}
+      {/* 4. COMPLETE PITCH LOG TABLE (投球始動から捕球までの完全クリップ一覧) */}
       <div className="glass-panel p-4 rounded-2xl border border-zinc-800 bg-zinc-950 flex flex-col gap-3 shadow-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1264,7 +1163,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               📜 投球ログ履歴一覧 ({history.length} 球記録済)
             </h3>
             <span className="text-[10px] text-zinc-400">
-              ※ 行または「▶️ 映像確認」をクリックすると、その投球の瞬間に動画がジャンプ再生されます
+              ※ 行または「▶️ 再生」をクリックすると、投手が足を上げた始動シーン（-{leadInSec.toFixed(1)}s）から捕球までがスムーズに再生されます
             </span>
           </div>
           {history.length > 0 && (
@@ -1288,29 +1187,30 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             <thead className="bg-zinc-900 text-zinc-400 text-[10px] font-black uppercase sticky top-0 z-10 border-b border-zinc-800">
               <tr>
                 <th className="py-2 px-3 text-center w-12">#</th>
-                <th className="py-2 px-3 text-center w-24">映像ジャンプ</th>
+                <th className="py-2 px-3 text-center w-28">映像ジャンプ</th>
+                <th className="py-2 px-3 text-center">クリップ範囲</th>
                 <th className="py-2 px-3">判定・結果</th>
                 <th className="py-2 px-3 text-center">球種</th>
                 <th className="py-2 px-3 text-center">球速</th>
                 <th className="py-2 px-3 text-center">コース</th>
-                <th className="py-2 px-3 text-center">制球力ズレ</th>
-                <th className="py-2 px-3 text-center">確信度</th>
-                <th className="py-2 px-3 text-center">時間</th>
-                <th className="py-2 px-3 text-center">即時修正</th>
+                <th className="py-2 px-3 text-center">制球ズレ</th>
+                <th className="py-2 px-3 text-center">記録時刻</th>
+                <th className="py-2 px-3 text-center">修正</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-850/80 bg-zinc-950/60 font-mono">
               {history.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-8 text-center text-zinc-600 font-sans">
-                    まだ投球データが記録されていません。「🚀 AI自動タグ付けスタート」または「⚡ 1球打刻」を押してください。
+                    まだ投球データが記録されていません。動画を再生しながら右上の打刻ボタン（または B/S/F/H キー）を押してください。
                   </td>
                 </tr>
               ) : (
                 history.map((item, idx) => {
                   const res = normalizeResult(item.result);
-                  const conf = getConfidenceInfo(item.confidence);
                   const isCurrent = activeSeekingPitchNum === item.pitch_number;
+                  const startTime = item.start_time ?? Math.max(0, (item.video_timestamp ?? 0) - leadInSec);
+                  const endTime = item.end_time ?? ((item.video_timestamp ?? 0) + leadOutSec);
 
                   return (
                     <tr
@@ -1330,7 +1230,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                               e.stopPropagation();
                               seekAndPlayVideo(item.video_timestamp!, item.pitch_number);
                             }}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] mx-auto cursor-pointer"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] mx-auto cursor-pointer active:scale-95"
                           >
                             <Play className="w-2.5 h-2.5 fill-emerald-400" />
                             <span>{formatSeconds(item.video_timestamp)}</span>
@@ -1338,6 +1238,9 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                         ) : (
                           <span className="text-zinc-600 text-[10px]">-</span>
                         )}
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-[10px] text-zinc-400">
+                        {formatSeconds(startTime)} 〜 {formatSeconds(endTime)}
                       </td>
                       <td className="py-2.5 px-3 font-sans">
                         <span className={`px-2 py-0.5 rounded text-[11px] font-black ${res.badge}`}>
@@ -1360,11 +1263,6 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                       </td>
                       <td className="py-2.5 px-3 text-center text-rose-300 text-[10px]">
                         {item.miss_distance_cm !== undefined ? `${item.miss_distance_cm}cm` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${conf.badge}`}>
-                          {conf.percent}%
-                        </span>
                       </td>
                       <td className="py-2.5 px-3 text-center text-zinc-500 text-[10px]">
                         {item.receivedAt}
@@ -1422,14 +1320,14 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
         </div>
       </div>
 
-      {/* 5. LINEUP & PITCHER SETTINGS MODAL */}
+      {/* 5. TIMING & LINEUP SETTINGS MODAL */}
       {isSettingOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
             <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-black text-sm text-white">📋 打順・投手事前登録設定</h3>
+                <Sliders className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-black text-sm text-white">⚙️ タイミング調整 ＆ 事前設定</h3>
               </div>
               <button
                 onClick={() => setIsSettingOpen(false)}
@@ -1440,6 +1338,16 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
             </div>
 
             <div className="flex border-b border-zinc-800 bg-zinc-950/50 px-4">
+              <button
+                onClick={() => setActiveSettingTab('timing')}
+                className={`py-2 px-4 text-xs font-bold border-b-2 cursor-pointer transition-all ${
+                  activeSettingTab === 'timing'
+                    ? 'border-indigo-500 text-indigo-300'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                ⏱️ シーク・リードイン調整
+              </button>
               <button
                 onClick={() => setActiveSettingTab('lineup')}
                 className={`py-2 px-4 text-xs font-bold border-b-2 cursor-pointer transition-all ${
@@ -1458,14 +1366,60 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                🧢 投手ローテーション
+                🧢 投手陣
               </button>
             </div>
 
             <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
-              {activeSettingTab === 'lineup' ? (
+              {activeSettingTab === 'timing' && (
+                <div className="bg-zinc-950/80 p-4 rounded-xl border border-zinc-800 flex flex-col gap-4">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-zinc-200">
+                        投球前リードイン時間（投球モーション始動前の戻し秒数）
+                      </label>
+                      <span className="text-xs font-mono font-black text-amber-400">
+                        {leadInSec.toFixed(1)} 秒前
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="3.0"
+                      max="10.0"
+                      step="0.5"
+                      value={leadInSec}
+                      onChange={(e) => setLeadInSec(parseFloat(e.target.value))}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                    <p className="text-[10px] text-zinc-400">
+                      ※ 投球を見てから打刻ボタンを押す場合、5.0〜7.0秒前に設定すると投手が足を上げる瞬間から綺麗に再生されます。
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2 border-t border-zinc-850">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-zinc-200">
+                        投球後リードアウト時間（捕球・打球後の余白秒数）
+                      </label>
+                      <span className="text-xs font-mono font-black text-sky-400">
+                        {leadOutSec.toFixed(1)} 秒後
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1.5"
+                      max="6.0"
+                      step="0.5"
+                      value={leadOutSec}
+                      onChange={(e) => setLeadOutSec(parseFloat(e.target.value))}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeSettingTab === 'lineup' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Team A Lineup */}
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-800 flex flex-col gap-2">
                     <h4 className="text-xs font-black text-amber-400">{teamAName} (先攻打者)</h4>
                     {lineupTop.map((b, idx) => (
@@ -1478,22 +1432,12 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                             const val = e.target.value;
                             setLineupTop(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
                           }}
-                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none focus:border-amber-500"
+                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none"
                         />
-                        <button
-                          onClick={() => {
-                            const nextHand = b.hand === 'R' ? 'L' : b.hand === 'L' ? 'S' : 'R';
-                            setLineupTop(prev => prev.map((item, i) => i === idx ? { ...item, hand: nextHand } : item));
-                          }}
-                          className="px-1.5 py-1 bg-zinc-800 text-[10px] font-bold rounded text-zinc-300 cursor-pointer"
-                        >
-                          {b.hand === 'R' ? '右打' : b.hand === 'L' ? '左打' : '両打'}
-                        </button>
                       </div>
                     ))}
                   </div>
 
-                  {/* Team B Lineup */}
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-800 flex flex-col gap-2">
                     <h4 className="text-xs font-black text-sky-400">{teamBName} (後攻打者)</h4>
                     {lineupBottom.map((b, idx) => (
@@ -1506,24 +1450,16 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                             const val = e.target.value;
                             setLineupBottom(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
                           }}
-                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none focus:border-sky-500"
+                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none"
                         />
-                        <button
-                          onClick={() => {
-                            const nextHand = b.hand === 'R' ? 'L' : b.hand === 'L' ? 'S' : 'R';
-                            setLineupBottom(prev => prev.map((item, i) => i === idx ? { ...item, hand: nextHand } : item));
-                          }}
-                          className="px-1.5 py-1 bg-zinc-800 text-[10px] font-bold rounded text-zinc-300 cursor-pointer"
-                        >
-                          {b.hand === 'R' ? '右打' : b.hand === 'L' ? '左打' : '両打'}
-                        </button>
                       </div>
                     ))}
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {activeSettingTab === 'pitchers' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Team A Pitchers */}
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-800 flex flex-col gap-2">
                     <h4 className="text-xs font-black text-amber-400">{teamAName} 投手陣</h4>
                     {pitchersTeamA.map((p, idx) => (
@@ -1536,13 +1472,12 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                             const val = e.target.value;
                             setPitchersTeamA(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
                           }}
-                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none focus:border-amber-500"
+                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none"
                         />
                       </div>
                     ))}
                   </div>
 
-                  {/* Team B Pitchers */}
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-800 flex flex-col gap-2">
                     <h4 className="text-xs font-black text-sky-400">{teamBName} 投手陣</h4>
                     {pitchersTeamB.map((p, idx) => (
@@ -1555,7 +1490,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
                             const val = e.target.value;
                             setPitchersTeamB(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
                           }}
-                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none focus:border-sky-500"
+                          className="flex-1 bg-zinc-900 border border-zinc-750 px-2 py-1 rounded text-zinc-100 font-bold outline-none"
                         />
                       </div>
                     ))}
@@ -1568,7 +1503,7 @@ export const AiLiveStatReceiver: React.FC<AiLiveStatReceiverProps> = ({
               <button
                 onClick={() => {
                   setIsSettingOpen(false);
-                  setLastNotification('✅ 打順表・投手ローテーションの設定を保存しました');
+                  setLastNotification('✅ タイミング・設定を保存しました');
                 }}
                 className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg cursor-pointer active:scale-95"
               >
