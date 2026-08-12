@@ -23,6 +23,8 @@ interface MittSample {
 // Sliding sample buffer for the past 4 seconds
 const mittSampleBuffer: MittSample[] = [];
 
+let lastRecordedTime = -1;
+
 /**
  * Record a frame sample while video is playing
  */
@@ -31,6 +33,16 @@ export function recordMittFrame(video: HTMLVideoElement): void {
     if (!video || video.readyState < 2 || !video.videoWidth) return;
 
     const currentTime = video.currentTime;
+
+    // Avoid duplicate samples at the exact same timestamp (throttle < 80ms)
+    if (Math.abs(currentTime - lastRecordedTime) < 0.08) return;
+
+    // If user sought/jumped in video (> 1.5s jump backwards or forwards), clear stale buffer
+    if (lastRecordedTime >= 0 && (currentTime < lastRecordedTime - 0.5 || currentTime > lastRecordedTime + 2.0)) {
+      mittSampleBuffer.length = 0;
+    }
+    lastRecordedTime = currentTime;
+
     const width = 320;
     const height = 180;
     const canvas = document.createElement('canvas');
@@ -82,8 +94,8 @@ export function recordMittFrame(video: HTMLVideoElement): void {
 
       mittSampleBuffer.push({ time: currentTime, normX, normY });
 
-      // Keep only samples within the last 5 seconds
-      while (mittSampleBuffer.length > 0 && mittSampleBuffer[0].time < currentTime - 5.0) {
+      // Keep only samples within the last 6 seconds
+      while (mittSampleBuffer.length > 0 && mittSampleBuffer[0].time < currentTime - 6.0) {
         mittSampleBuffer.shift();
       }
     }
