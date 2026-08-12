@@ -136,6 +136,48 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
   };
 
   // -------------------------------------------------------------
+  // HIGH-PERFORMANCE VIRTUAL SCROLLING ENGINE (300~1000+ pitches)
+  // -------------------------------------------------------------
+  const ROW_HEIGHT = 28;
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(600);
+
+  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
+
+  useEffect(() => {
+    if (tableContainerRef.current) {
+      setContainerHeight(tableContainerRef.current.clientHeight || 600);
+    }
+  }, []);
+
+  const virtualRange = useMemo(() => {
+    const total = sortedEvents.length;
+    if (total <= 60) {
+      // 60件以下なら通常描画
+      return { startIndex: 0, endIndex: total, topPadding: 0, bottomPadding: 0, visibleEvents: sortedEvents };
+    }
+
+    const overscan = 8;
+    const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - overscan);
+    const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + overscan * 2;
+    const endIndex = Math.min(total, startIndex + visibleCount);
+
+    const topPadding = startIndex * ROW_HEIGHT;
+    const bottomPadding = (total - endIndex) * ROW_HEIGHT;
+
+    return {
+      startIndex,
+      endIndex,
+      topPadding,
+      bottomPadding,
+      visibleEvents: sortedEvents.slice(startIndex, endIndex)
+    };
+  }, [sortedEvents, scrollTop, containerHeight]);
+
+  // -------------------------------------------------------------
   // MOUSE DRAG MULTI-SELECTION LOGIC FOR TABLE ROWS
   // -------------------------------------------------------------
   const handleRowMouseDown = (id: string, e: React.MouseEvent) => {
@@ -423,7 +465,11 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
         
         {/* TAB A: SPREADSHEET GRID EDITOR */}
         {activeTab === 'grid' && (
-          <div className="flex-1 overflow-auto relative select-none">
+          <div 
+            ref={tableContainerRef}
+            onScroll={handleTableScroll}
+            className="flex-1 overflow-auto relative select-none"
+          >
             <table className="w-full border-collapse text-xs table-fixed">
               <thead>
                 <tr className="bg-zinc-950/95 text-zinc-400 uppercase font-black tracking-wider text-[9px] border-b border-zinc-850 sticky top-0 z-20">
@@ -441,8 +487,8 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                     </button>
                   </th>
                   <th className="w-14 py-1.5 px-1 border-r border-zinc-850 text-center">No</th>
-                  <th className="w-32 py-1.5 px-2 border-r border-zinc-850 text-left">投手名 (再生)</th>
-                  <th className="w-28 py-1.5 px-2 border-r border-zinc-850 text-left">タグ (シーク)</th>
+                  <th className="w-32 py-1.5 px-2 border-r border-zinc-850 text-left">投手名</th>
+                  <th className="w-36 py-1.5 px-2 border-r border-zinc-850 text-left">プレイ名</th>
                   
                   {columnOrder.map(group => {
                     const isColOver = dragOverColName === group;
@@ -476,39 +522,48 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  sortedEvents.map((ev, idx) => {
-                    const isSelected = selectedIds.has(ev.id);
-                    const isDragActive = dragCurrentSelected.has(ev.id);
-                    const pName = ev.labels.Pitcher || ev.labels['投手名'] || ev.actionName;
+                  <>
+                    {/* Top Virtual Spacer */}
+                    {virtualRange.topPadding > 0 && (
+                      <tr>
+                        <td colSpan={4 + columnOrder.length} style={{ height: `${virtualRange.topPadding}px`, padding: 0, border: 'none' }} />
+                      </tr>
+                    )}
 
-                    const isRowDragging = draggedRowIdx === idx;
-                    const isRowOver = dragOverRowIdx === idx;
-                    const isNowPlaying = nowPlayingClipId === ev.id;
+                    {virtualRange.visibleEvents.map((ev, relativeIdx) => {
+                      const idx = virtualRange.startIndex + relativeIdx;
+                      const isSelected = selectedIds.has(ev.id);
+                      const isDragActive = dragCurrentSelected.has(ev.id);
+                      const pName = ev.labels.Pitcher || ev.labels['投手名'] || ev.actionName;
 
-                    return (
-                      <tr 
-                        key={ev.id} 
-                        ref={(el) => { clipRefs.current[ev.id] = el; }}
-                        draggable
-                        onDragStart={(e) => handleRowDragStart(e, idx)}
-                        onDragOver={(e) => handleRowDragOver(e, idx)}
-                        onDrop={(e) => handleRowDrop(e, idx)}
-                        onDragEnd={handleRowDragEnd}
-                        onMouseDown={(e) => handleRowMouseDown(ev.id, e)}
-                        onMouseEnter={() => handleRowMouseEnter(ev.id)}
-                        className={`group hover:bg-zinc-850/30 transition-all cursor-row-resize ${
-                          isNowPlaying
-                            ? 'bg-emerald-900/40 ring-1 ring-emerald-400 text-emerald-200'
-                            : isSelected 
-                            ? 'bg-emerald-950/20 hover:bg-emerald-950/30' 
-                            : isDragActive 
-                            ? 'bg-zinc-800/40'
-                            : 'bg-zinc-950/10'
-                        } ${isRowOver ? 'border-t-4 border-t-amber-500 bg-zinc-900' : ''} ${
-                          isRowDragging ? 'opacity-30 bg-zinc-950 scale-[0.99]' : ''
-                        }`}
-                        title="行のNo付近をドラッグして上下に並び替え"
-                      >
+                      const isRowDragging = draggedRowIdx === idx;
+                      const isRowOver = dragOverRowIdx === idx;
+                      const isNowPlaying = nowPlayingClipId === ev.id;
+
+                      return (
+                        <tr 
+                          key={ev.id} 
+                          ref={(el) => { clipRefs.current[ev.id] = el; }}
+                          draggable
+                          onDragStart={(e) => handleRowDragStart(e, idx)}
+                          onDragOver={(e) => handleRowDragOver(e, idx)}
+                          onDrop={(e) => handleRowDrop(e, idx)}
+                          onDragEnd={handleRowDragEnd}
+                          onMouseDown={(e) => handleRowMouseDown(ev.id, e)}
+                          onMouseEnter={() => handleRowMouseEnter(ev.id)}
+                          className={`group hover:bg-zinc-850/30 transition-all cursor-row-resize ${
+                            isNowPlaying
+                              ? 'bg-emerald-900/40 ring-1 ring-emerald-400 text-emerald-200'
+                              : isSelected 
+                              ? 'bg-emerald-950/20 hover:bg-emerald-950/30' 
+                              : isDragActive 
+                              ? 'bg-zinc-800/40'
+                              : 'bg-zinc-950/10'
+                          } ${isRowOver ? 'border-t-4 border-t-amber-500 bg-zinc-900' : ''} ${
+                            isRowDragging ? 'opacity-30 bg-zinc-950 scale-[0.99]' : ''
+                          }`}
+                          title="行のNo付近をドラッグして上下に並び替え"
+                        >
                         <td 
                           className="py-1 px-1.5 text-center border-r border-zinc-850"
                           onMouseDown={(e) => e.stopPropagation()}
@@ -602,9 +657,17 @@ export const OrganizerView: React.FC<OrganizerViewProps> = ({
                         })}
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
+                  })}
+
+                  {/* Bottom Virtual Spacer */}
+                  {virtualRange.bottomPadding > 0 && (
+                    <tr>
+                      <td colSpan={4 + columnOrder.length} style={{ height: `${virtualRange.bottomPadding}px`, padding: 0, border: 'none' }} />
+                    </tr>
+                  )}
+                </>
+              )}
+            </tbody>
             </table>
           </div>
         )}

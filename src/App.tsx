@@ -1695,9 +1695,14 @@ function App() {
   }, []);
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [videoName, setVideoName] = useState<string | null>(null);
+  const [videoName, setVideoName] = useState<string | null>(() => localStorage.getItem('sportscode_last_video_name') || null);
   const [videoDuration, setVideoDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(() => {
+    const savedTime = localStorage.getItem('sportscode_last_video_time');
+    return savedTime ? parseFloat(savedTime) : 0;
+  });
+
+
 
   // Teams names state
   const [teamAName, setTeamAName] = useState(() => localStorage.getItem('sportscode_teama_name') || '');
@@ -1840,6 +1845,34 @@ function App() {
     }
     return [];
   });
+
+  // 🛡️ 誤リロード・離脱防止 (BeforeUnload Prevention)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (events.length > 0 || videoUrl) {
+        e.preventDefault();
+        e.returnValue = '作業中のタグ付け・動画データがあります。ページを離脱しますか？';
+        return '作業中のタグ付け・動画データがあります。ページを離脱しますか？';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [events.length, videoUrl]);
+
+  // 💾 セッション状態の自動退避
+  useEffect(() => {
+    if (videoName) {
+      localStorage.setItem('sportscode_last_video_name', videoName);
+      localStorage.setItem('sportscode_last_video_time', currentTime.toString());
+    }
+    if (events.length > 0) {
+      try {
+        localStorage.setItem('sportscode_events_backup', JSON.stringify(events));
+      } catch (e) {
+        console.warn('LocalStorage events backup quota exceeded', e);
+      }
+    }
+  }, [videoName, currentTime, events]);
   const [, setEventsUndoStack] = useState<TaggedEvent[][]>([]);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [activeEventName, setActiveEventName] = useState<string | null>(null);
