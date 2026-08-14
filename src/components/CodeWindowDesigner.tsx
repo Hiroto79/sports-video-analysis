@@ -971,34 +971,34 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
   return (
     <div className="flex flex-col lg:flex-row landscape:flex-row gap-2.5 sm:gap-3 w-full flex-1 min-w-0">
       
-      {/* LEFT COLUMN: Control Widgets Panel (Code Window - 2/5 Ratio Width on landscape/desktop) */}
-      <div className="w-full lg:w-2/5 landscape:w-2/5 flex flex-col gap-2 sm:gap-2.5 bg-zinc-900 border border-zinc-800 p-2.5 sm:p-3.5 rounded-xl shadow-xl h-fit text-xs shrink-0">
+      {/* LEFT COLUMN: Control Widgets Panel (Code Window - Expanded Width on landscape/desktop) */}
+      <div className="w-full lg:w-[48%] landscape:w-[48%] xl:w-[46%] flex flex-col gap-2 sm:gap-2.5 bg-zinc-900 border border-zinc-800 p-2.5 sm:p-3 rounded-xl shadow-xl h-fit text-xs shrink-0">
         
         {/* ROW 1: Count & Inning & Batter with Prev/Next buttons */}
-        <div className="grid grid-cols-12 gap-2 items-center">
+        <div className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
           {/* Balls, Strikes, Outs */}
-          <div className="col-span-12 sm:col-span-4 bg-zinc-950/60 p-2 rounded-lg border border-zinc-850 flex flex-col justify-between gap-1.5 min-h-[48px]">
+          <div className="col-span-12 sm:col-span-5 xl:col-span-5 bg-zinc-950/60 p-1.5 sm:p-2 rounded-lg border border-zinc-800 flex flex-col justify-between gap-1 min-h-[48px]">
             <div className="flex justify-between items-center text-[9px] uppercase font-black text-zinc-400 select-none">
               <span>カウント (B/S/O)</span>
               <button 
                 type="button"
                 onClick={onResetScoreboard} 
-                className="text-zinc-500 hover:text-zinc-300 p-1 rounded hover:bg-zinc-800 transition-colors"
+                className="text-zinc-500 hover:text-zinc-300 p-0.5 sm:p-1 rounded hover:bg-zinc-800 transition-colors"
                 title="カウントリセット"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="flex justify-around items-center gap-1.5 text-xs font-bold text-zinc-300">
+            <div className="flex justify-between items-center gap-1 sm:gap-1.5 text-xs font-bold text-zinc-300 min-w-0">
               {/* Ball */}
-              <div className="flex items-center gap-1">
-                <span className="text-emerald-400 font-mono font-black text-xs">B:</span>
+              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                <span className="text-emerald-400 font-mono font-black text-[11px] sm:text-xs">B:</span>
                 {[1, 2, 3].map(b => (
                   <button
                     key={b}
                     type="button"
                     onClick={onIncrementBall}
-                    className={`w-4 h-4 rounded-full border cursor-pointer transition-all active:scale-90 ${
+                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border cursor-pointer transition-all active:scale-90 shrink-0 ${
                       balls >= b ? 'bg-emerald-500 border-emerald-400 shadow shadow-emerald-700/80 scale-105' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                     }`}
                     title={`ボール ${b}`}
@@ -1006,14 +1006,14 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                 ))}
               </div>
               {/* Strike */}
-              <div className="flex items-center gap-1">
-                <span className="text-amber-400 font-mono font-black text-xs">S:</span>
+              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                <span className="text-amber-400 font-mono font-black text-[11px] sm:text-xs">S:</span>
                 {[1, 2].map(s => (
                   <button
                     key={s}
                     type="button"
                     onClick={onIncrementStrike}
-                    className={`w-4 h-4 rounded-full border cursor-pointer transition-all active:scale-90 ${
+                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border cursor-pointer transition-all active:scale-90 shrink-0 ${
                       strikes >= s ? 'bg-amber-500 border-amber-400 shadow shadow-yellow-600/80 scale-105' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                     }`}
                     title={`ストライク ${s}`}
@@ -1021,14 +1021,14 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                 ))}
               </div>
               {/* Out */}
-              <div className="flex items-center gap-1">
-                <span className="text-rose-400 font-mono font-black text-xs">O:</span>
+              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                <span className="text-rose-400 font-mono font-black text-[11px] sm:text-xs">O:</span>
                 {[1, 2].map(o => (
                   <button
                     key={o}
                     type="button"
                     onClick={onIncrementOut}
-                    className={`w-4 h-4 rounded-full border cursor-pointer transition-all active:scale-90 ${
+                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border cursor-pointer transition-all active:scale-90 shrink-0 ${
                       outs >= o ? 'bg-rose-500 border-rose-400 shadow shadow-rose-700/80 scale-105' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                     }`}
                     title={`アウト ${o}`}
@@ -1039,7 +1039,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
           </div>
 
           {/* Inning Select */}
-          <div className="col-span-5 sm:col-span-3 flex flex-col gap-0.5">
+          <div className="col-span-4 sm:col-span-2 xl:col-span-2 flex flex-col gap-0.5">
             <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">イニング</label>
             <div className="flex gap-0.5 h-8">
               <select
@@ -1054,7 +1054,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               <select
                 value={inningHalf}
                 onChange={(e) => onUpdateInningHalf(e.target.value as 'top' | 'bottom')}
-                className="bg-zinc-900 border border-zinc-805 rounded px-0.5 text-[9px] text-zinc-205 focus:outline-none focus:border-sky-505 flex-1 cursor-pointer"
+                className="bg-zinc-900 border border-zinc-800 rounded px-0.5 text-[9px] text-zinc-200 focus:outline-none focus:border-sky-500 flex-1 cursor-pointer"
               >
                 <option value="top">表</option>
                 <option value="bottom">裏</option>
@@ -1063,7 +1063,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
           </div>
 
           {/* Batter Select + Prev / Next Switchers */}
-          <div className="col-span-7 sm:col-span-5 flex flex-col gap-0.5">
+          <div className="col-span-8 sm:col-span-5 xl:col-span-5 flex flex-col gap-0.5">
             <label className="text-[8.5px] uppercase font-bold text-zinc-400 select-none">打者 [攻: {battingTeam}]</label>
             <div className="flex items-center gap-1 h-8">
               <button
@@ -1801,12 +1801,12 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               </div>
             </div>
 
-            {/* Far Right Side: Pitch Speed Mini Calculator Keypad (Expanded flex-1 aligned with Runner) */}
-            <div className="flex-1 flex flex-col gap-1 min-w-0 min-h-[148px] justify-between bg-zinc-950/80 border border-amber-900/40 p-2 rounded-xl shadow select-none">
-              <div className="flex justify-between items-center text-[8.5px] font-black text-amber-400 select-none">
+            {/* Far Right Side: Pitch Speed Mini Calculator Keypad (Compact & Clean) */}
+            <div className="flex-1 flex flex-col gap-1 min-w-0 justify-between bg-zinc-950/80 border border-amber-900/40 p-1.5 rounded-lg shadow select-none">
+              <div className="flex justify-between items-center text-[8px] font-black text-amber-400 select-none">
                 <span className="truncate">⚡ 球速(km/h)</span>
                 <div className="flex items-center gap-1">
-                  <span className="font-mono text-xs text-amber-300 bg-black/90 border border-amber-700/80 px-2 py-0.5 rounded font-black tracking-wider">
+                  <span className="font-mono text-[11px] text-amber-300 bg-black/90 border border-amber-700/80 px-1.5 py-0.5 rounded font-black tracking-wider">
                     {pitchSpeedInput ? `${pitchSpeedInput}` : '___'}
                   </span>
                   <button
@@ -1815,7 +1815,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                       const current = pitchSpeedInput || '';
                       onUpdatePitchSpeedInput?.(current.slice(0, -1));
                     }}
-                    className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-[9px] text-rose-300 border border-zinc-700 rounded-lg cursor-pointer font-bold active:scale-90"
+                    className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-[8px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold active:scale-90"
                     title="1文字消去"
                   >
                     ⌫
@@ -1824,7 +1824,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               </div>
 
               {/* Mini 3x4 Grid (直感的な電卓配列 3列) */}
-              <div className="grid grid-cols-3 gap-1 text-xs font-black flex-1 pt-1">
+              <div className="grid grid-cols-3 gap-0.5 sm:gap-1 text-[11px] font-black pt-0.5">
                 {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.'].map((keyVal) => (
                   <button
                     key={keyVal}
@@ -1836,7 +1836,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                         onUpdatePitchSpeedInput?.(current + keyVal);
                       }
                     }}
-                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-8 shadow-sm"
+                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-6 sm:h-6.5 shadow-sm"
                   >
                     {keyVal}
                   </button>
@@ -1850,7 +1850,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                       onUpdatePitchSpeedInput?.(pitchSpeedInput);
                     }
                   }}
-                  className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded text-white font-black text-[8.5px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-7"
+                  className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded text-zinc-950 font-black text-[9px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-6 sm:h-6.5"
                 >
                   ✔ 決定
                 </button>
