@@ -1751,11 +1751,11 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
 
           </div>
 
-          {/* Lower Sub-Row: Baseball Field Outfield SVG (flex-1) & Speed Keypad (Compact Fixed Width) */}
+          {/* Lower Sub-Row: Baseball Field Outfield SVG (Aligned with Course) & Speed Keypad + Quick Play Actions */}
           <div className="flex items-stretch gap-2 select-none">
             
-            {/* Left Side: Baseball Outfield SVG (flex-1 expanded for easier click accuracy) */}
-            <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+            {/* Left Side: Baseball Outfield SVG (Matched width with Course Grid above) */}
+            <div className="w-[142px] sm:w-[152px] shrink-0 flex flex-col gap-0.5">
               <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-400 select-none px-0.5 pb-0.5">
                 <span>打球方向 (球場)</span>
                 {plottedHit && (
@@ -1764,10 +1764,10 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                   </button>
                 )}
               </div>
-              <div className="w-full flex-1 min-h-[120px] max-h-[136px] relative select-none bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden shadow-inner flex items-center justify-center">
+              <div className="w-full flex-1 min-h-[135px] max-h-[142px] relative select-none bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden shadow-inner flex items-center justify-center">
                 <svg 
                   onClick={handleFieldClick}
-                  className="w-full h-full max-h-[132px] cursor-crosshair p-0.5"
+                  className="w-full h-full max-h-[135px] cursor-crosshair p-0.5"
                   viewBox="2 20 96 68"
                 >
                   {/* Outfield Grass Sector */}
@@ -1801,60 +1801,110 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               </div>
             </div>
 
-            {/* Right Side: Pitch Speed Mini Calculator Keypad (Proportionate, Compact Calculator) */}
-            <div className="w-[160px] sm:w-[172px] shrink-0 flex flex-col gap-1 justify-between bg-zinc-950/90 border border-amber-900/40 p-2 rounded-xl shadow select-none">
-              <div className="flex justify-between items-center text-[8px] font-black text-amber-400 select-none">
-                <span className="truncate">⚡ 球速(km/h)</span>
-                <div className="flex items-center gap-1">
-                  <span className="font-mono text-xs text-amber-300 bg-black border border-amber-700/80 px-2 py-0.5 rounded font-black tracking-wider min-w-[36px] text-center">
-                    {pitchSpeedInput ? `${pitchSpeedInput}` : '---'}
-                  </span>
+            {/* Right Side: Speed Keypad + Extra Play Actions Container (flex-1 matched with Runner above) */}
+            <div className="flex-1 flex gap-1.5 min-w-0 items-stretch">
+              
+              {/* Extra Out & Event Quick Shortcuts */}
+              <div className="flex-1 flex flex-col gap-1 min-w-0 justify-between bg-zinc-950 p-1.5 rounded-lg border border-zinc-800">
+                <div className="text-[7.5px] uppercase font-black text-rose-400 select-none text-center">
+                  ⚡ プレー・アウト記録
+                </div>
+                <div className="grid grid-cols-2 gap-1 flex-1">
+                  {[
+                    { name: '併殺打', group: 'Out', color: 'bg-rose-950/40 border-rose-900/50 hover:bg-rose-900/60 text-rose-300', link: 'out' },
+                    { name: '三振', group: 'Strikeout', color: 'bg-rose-950/40 border-rose-900/50 hover:bg-rose-900/60 text-rose-300 font-bold', link: 'out' },
+                    { name: '犠打', group: 'Bunt', color: 'bg-purple-950/40 border-purple-900/50 hover:bg-purple-900/60 text-purple-300', link: 'out' },
+                    { name: '犠飛', group: 'Flyout', color: 'bg-purple-950/40 border-purple-900/50 hover:bg-purple-900/60 text-purple-300', link: 'out' },
+                    { name: '暴投', group: 'WildPitch', color: 'bg-amber-950/40 border-amber-900/50 hover:bg-amber-900/60 text-amber-300', link: 'none' },
+                    { name: '捕逸', group: 'PassedBall', color: 'bg-amber-950/40 border-amber-900/50 hover:bg-amber-900/60 text-amber-300', link: 'none' },
+                  ].map((act, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        onTriggerButton({
+                          id: `quick_act_${i}`,
+                          name: act.name,
+                          type: 'label' as ButtonType,
+                          groupName: act.group,
+                          color: act.color,
+                          hotkey: '',
+                          leadIn: 0,
+                          leadOut: 0
+                        });
+                        if (act.link === 'out') {
+                          const outBtn = buttons.find(b => b.name.toLowerCase() === 'out' || b.name === 'アウト');
+                          if (outBtn) {
+                            setFlashingButtons(prev => ({ ...prev, [outBtn.id]: true }));
+                            setTimeout(() => setFlashingButtons(prev => ({ ...prev, [outBtn.id]: false })), 180);
+                            onTriggerButton(outBtn);
+                          }
+                        }
+                      }}
+                      className={`border rounded-md text-[9.5px] font-bold flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-sm ${act.color}`}
+                    >
+                      {act.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pitch Speed Mini Keypad (Compact & Proportionate) */}
+              <div className="w-[145px] sm:w-[155px] shrink-0 flex flex-col gap-1 justify-between bg-zinc-950/90 border border-amber-900/40 p-1.5 rounded-lg shadow select-none">
+                <div className="flex justify-between items-center text-[7.5px] font-black text-amber-400 select-none">
+                  <span className="truncate">⚡ 球速(km/h)</span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-[11px] text-amber-300 bg-black border border-amber-700/80 px-1.5 py-0.2 rounded font-black tracking-wider min-w-[32px] text-center">
+                      {pitchSpeedInput ? `${pitchSpeedInput}` : '---'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = pitchSpeedInput || '';
+                        onUpdatePitchSpeedInput?.(current.slice(0, -1));
+                      }}
+                      className="px-1 py-0.2 bg-zinc-800 hover:bg-zinc-700 text-[8px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold active:scale-90"
+                      title="1文字消去"
+                    >
+                      ⌫
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mini 3x4 Grid (コンパクトな電卓ボタン) */}
+                <div className="grid grid-cols-3 gap-0.5 sm:gap-1 text-[11px] font-black pt-0.5">
+                  {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.'].map((keyVal) => (
+                    <button
+                      key={keyVal}
+                      type="button"
+                      onClick={() => {
+                        const current = pitchSpeedInput || '';
+                        if (keyVal === '.' && current.includes('.')) return;
+                        if (current.length < 5) {
+                          onUpdatePitchSpeedInput?.(current + keyVal);
+                        }
+                      }}
+                      className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-6 sm:h-6.5 shadow-sm"
+                    >
+                      {keyVal}
+                    </button>
+                  ))}
+
+                  {/* 右下: 決定ボタン */}
                   <button
                     type="button"
                     onClick={() => {
-                      const current = pitchSpeedInput || '';
-                      onUpdatePitchSpeedInput?.(current.slice(0, -1));
+                      if (pitchSpeedInput) {
+                        onUpdatePitchSpeedInput?.(pitchSpeedInput);
+                      }
                     }}
-                    className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-[9px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold active:scale-90"
-                    title="1文字消去"
+                    className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded text-zinc-950 font-black text-[9px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-6 sm:h-6.5"
                   >
-                    ⌫
+                    ✔ 決定
                   </button>
                 </div>
               </div>
 
-              {/* Mini 3x4 Grid (コンパクトな電卓ボタン) */}
-              <div className="grid grid-cols-3 gap-1 text-xs font-black pt-0.5">
-                {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.'].map((keyVal) => (
-                  <button
-                    key={keyVal}
-                    type="button"
-                    onClick={() => {
-                      const current = pitchSpeedInput || '';
-                      if (keyVal === '.' && current.includes('.')) return;
-                      if (current.length < 5) {
-                        onUpdatePitchSpeedInput?.(current + keyVal);
-                      }
-                    }}
-                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-7 shadow-sm"
-                  >
-                    {keyVal}
-                  </button>
-                ))}
-
-                {/* 右下: 決定ボタン */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (pitchSpeedInput) {
-                      onUpdatePitchSpeedInput?.(pitchSpeedInput);
-                    }
-                  }}
-                  className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded-lg text-zinc-950 font-black text-[9.5px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-7"
-                >
-                  ✔ 決定
-                </button>
-              </div>
             </div>
 
           </div>
