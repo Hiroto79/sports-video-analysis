@@ -1751,23 +1751,23 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
 
           </div>
 
-          {/* Lower Sub-Row: Baseball Field Outfield SVG (shrink-0 aligned with Course) & Speed Keypad (flex-1 aligned with Runner) */}
-          <div className="flex items-start gap-2">
+          {/* Lower Sub-Row: Baseball Field Outfield SVG (flex-1) & Speed Keypad (Compact Fixed Width) */}
+          <div className="flex items-stretch gap-2 select-none">
             
-            {/* Side: Baseball Outfield SVG (Compact shrink-0 width aligned with Course above) */}
-            <div className="flex flex-col gap-0.5 shrink-0 space-y-1">
-              <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-400 select-none px-0.5">
+            {/* Left Side: Baseball Outfield SVG (flex-1 expanded for easier click accuracy) */}
+            <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+              <div className="flex justify-between items-center text-[7.5px] font-bold text-zinc-400 select-none px-0.5 pb-0.5">
                 <span>打球方向 (球場)</span>
                 {plottedHit && (
-                  <button onClick={() => onUpdatePlottedHit(null)} className="text-red-400 hover:underline">
+                  <button onClick={() => onUpdatePlottedHit(null)} className="text-rose-400 hover:underline text-[7.5px] font-bold">
                     クリア
                   </button>
                 )}
               </div>
-              <div className="w-[124px] h-[124px] relative select-none bg-zinc-950 rounded-lg border border-zinc-850 overflow-hidden shadow-inner flex items-center justify-center">
+              <div className="w-full flex-1 min-h-[120px] max-h-[136px] relative select-none bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden shadow-inner flex items-center justify-center">
                 <svg 
                   onClick={handleFieldClick}
-                  className="w-full h-full cursor-crosshair p-0.5"
+                  className="w-full h-full max-h-[132px] cursor-crosshair p-0.5"
                   viewBox="2 20 96 68"
                 >
                   {/* Outfield Grass Sector */}
@@ -1801,13 +1801,13 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
               </div>
             </div>
 
-            {/* Far Right Side: Pitch Speed Mini Calculator Keypad (Compact & Clean) */}
-            <div className="flex-1 flex flex-col gap-1 min-w-0 justify-between bg-zinc-950/80 border border-amber-900/40 p-1.5 rounded-lg shadow select-none">
+            {/* Right Side: Pitch Speed Mini Calculator Keypad (Proportionate, Compact Calculator) */}
+            <div className="w-[160px] sm:w-[172px] shrink-0 flex flex-col gap-1 justify-between bg-zinc-950/90 border border-amber-900/40 p-2 rounded-xl shadow select-none">
               <div className="flex justify-between items-center text-[8px] font-black text-amber-400 select-none">
                 <span className="truncate">⚡ 球速(km/h)</span>
                 <div className="flex items-center gap-1">
-                  <span className="font-mono text-[11px] text-amber-300 bg-black/90 border border-amber-700/80 px-1.5 py-0.5 rounded font-black tracking-wider">
-                    {pitchSpeedInput ? `${pitchSpeedInput}` : '___'}
+                  <span className="font-mono text-xs text-amber-300 bg-black border border-amber-700/80 px-2 py-0.5 rounded font-black tracking-wider min-w-[36px] text-center">
+                    {pitchSpeedInput ? `${pitchSpeedInput}` : '---'}
                   </span>
                   <button
                     type="button"
@@ -1815,7 +1815,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                       const current = pitchSpeedInput || '';
                       onUpdatePitchSpeedInput?.(current.slice(0, -1));
                     }}
-                    className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-[8px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold active:scale-90"
+                    className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-[9px] text-rose-300 border border-zinc-700 rounded cursor-pointer font-bold active:scale-90"
                     title="1文字消去"
                   >
                     ⌫
@@ -1823,8 +1823,8 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                 </div>
               </div>
 
-              {/* Mini 3x4 Grid (直感的な電卓配列 3列) */}
-              <div className="grid grid-cols-3 gap-0.5 sm:gap-1 text-[11px] font-black pt-0.5">
+              {/* Mini 3x4 Grid (コンパクトな電卓ボタン) */}
+              <div className="grid grid-cols-3 gap-1 text-xs font-black pt-0.5">
                 {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.'].map((keyVal) => (
                   <button
                     key={keyVal}
@@ -1836,7 +1836,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                         onUpdatePitchSpeedInput?.(current + keyVal);
                       }
                     }}
-                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-6 sm:h-6.5 shadow-sm"
+                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-zinc-100 cursor-pointer active:scale-90 text-center flex items-center justify-center font-mono font-bold h-7 shadow-sm"
                   >
                     {keyVal}
                   </button>
@@ -1850,7 +1850,7 @@ export const CodeWindowDesigner: React.FC<CodeWindowDesignerProps> = ({
                       onUpdatePitchSpeedInput?.(pitchSpeedInput);
                     }
                   }}
-                  className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded text-zinc-950 font-black text-[9px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-6 sm:h-6.5"
+                  className="bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 border border-emerald-500/50 rounded-lg text-zinc-950 font-black text-[9.5px] cursor-pointer active:scale-95 flex items-center justify-center shadow shadow-emerald-950 h-7"
                 >
                   ✔ 決定
                 </button>
